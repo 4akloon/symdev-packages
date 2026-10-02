@@ -5,6 +5,12 @@
 # are the ones recovered from that build (symdev experiment 107). build.sh reads the
 # [[source]] tables below: `url` first, then `sha256`; the file name is the URL's last
 # path segment.
+#
+# Every [[source]] is an official GNU tarball. The three files that build took from
+# GCC4Symbian are replaced by ours, written from GCC's requirements (symdev experiment
+# 108): sys-include/stdint.h and sys-include/stdio.h next to this file, and instead of a
+# changed libgcc/libgcov-driver.c, build.sh's CFLAGS_FOR_TARGET defines the
+# __INTPTR_TYPE__ that arm-none-symbianelf does not predefine.
 id = "gcce;12.1.0"
 license = "GPL-3.0-or-later"
 host = "x86_64-linux"
@@ -36,20 +42,3 @@ sha256 = "17503d2c395dfcf106b622dc142683c1199431d095367c6aacba6eec30340459"
 [[source]]
 url = "https://gcc.gnu.org/pub/gcc/infrastructure/isl-0.16.1.tar.bz2"
 sha256 = "412538bb65c799ac98e17e8cfcdacbb257a57362acfaaff254b0fcae970126d2"
-
-# GCC4Symbian at fe1b15a, each needed (experiment 107): libgcc/libgcov-driver.c with a
-# fallback `__INTPTR_TYPE__`, which arm-none-symbianelf does not predefine (pristine:
-# libgcov fails to compile); sys-include/stdint.h (without it libsupc++'s new_opa.cc does
-# not compile); sys-include/stdio.h (without it libstdc++'s header checks fail and the
-# installed c++config.h loses _GLIBCXX_HAVE_{FLOAT,STDALIGN,STDBOOL,STDINT}_H).
-[[source]]
-url = "https://raw.githubusercontent.com/fedor4ever/GCC4Symbian/fe1b15a1c25716d5c515f12593080d58f14d4c3f/build-data/GCC-12.1.0/libgcov-driver.c"
-sha256 = "3178078259108b36b0789c71a638c2c7ab1348594a768598342b36eeaece7011"
-
-[[source]]
-url = "https://raw.githubusercontent.com/fedor4ever/GCC4Symbian/fe1b15a1c25716d5c515f12593080d58f14d4c3f/sys-include/stdint.h"
-sha256 = "1456147206d28254d03b8e51244fa4c33795f1095c771188995f5a7f79e02848"
-
-[[source]]
-url = "https://raw.githubusercontent.com/fedor4ever/GCC4Symbian/fe1b15a1c25716d5c515f12593080d58f14d4c3f/sys-include/stdio.h"
-sha256 = "968ac4b1dd3d480f066ef97754e971a4c2683e9fde8d252ee9edae7fa3275a37"

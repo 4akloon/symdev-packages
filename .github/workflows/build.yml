@@ -49,13 +49,15 @@ jobs:
         run: /opt/gcce/bin/arm-none-symbianelf-g++ -v
 
       # GPL corresponding source: every [[source]] file build.sh fetched and checked (its
-      # SHA256SUMS), the recipe and build.sh.
+      # SHA256SUMS) and the whole recipe directory (recipe.toml, build.sh and our
+      # sys-include headers).
       - name: Pack the corresponding source
         run: |
           src=gcce-12.1.0-source
           mkdir "$src"
           awk '{ print $2 }' work/SHA256SUMS | while read -r file; do cp "work/$file" "$src/"; done
-          cp work/SHA256SUMS recipes/gcce/12.1.0/recipe.toml recipes/gcce/12.1.0/build.sh "$src/"
+          cp work/SHA256SUMS "$src/"
+          cp -R recipes/gcce/12.1.0/. "$src/"
           tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - "$src" \
             | gzip -n -9 > "$src.tar.gz"
 
