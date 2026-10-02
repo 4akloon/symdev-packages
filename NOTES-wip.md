@@ -1,3 +1,72 @@
+# WIP: release prep — branch `release-prep`
+
+Brief (2026-10-02, from the lead): worktree `~/worktrees/symdev-packages/release-prep`; never
+push, merge or add remotes. (1) `publish file` uploads install.sh to the public bucket root
+(no-cache), wired as the last step of symdev.yml's symdev publish job + a dispatch that only
+re-uploads it; (2) THIRD-PARTY-NOTICES.txt for the prebuilt symdev, generated from
+`cargo metadata --filter-platform x86_64-unknown-linux-musl`, shipped as
+`share/doc/symdev/THIRD-PARTY-NOTICES.txt`; (3) tests/install.sh.test in CI. Added mid-task:
+build.sh exports `SYMDEV_RELEASE=1` for the release cargo build (symdev drops its
+compile-time source-checkout fallback for the Rust SDK; changed on another branch).
+
+## Status
+
+| Step | State |
+|---|---|
+| baseline: cargo test | 41 + 5 pass (da61f8a) |
+| 1 publish file + symdev.yml | in progress |
+| SYMDEV_RELEASE=1 in build.sh | todo |
+| 2 notices generator + build.sh | todo (research done, below) |
+| 3 install test in CI | todo |
+
+## Facts (item 2, measured 2026-10-02 on toolchain-manager 5c90f9c)
+
+- `cargo metadata --format-version 1 --filter-platform x86_64-unknown-linux-musl --offline
+  --locked`: from symdev-cli through normal deps 131 packages, 14 of them symdev's workspace
+  crates (covered by symdev's LICENSE), so 117 third-party; 6 proc-macros (+ syn, quote,
+  proc-macro2, unicode-ident, heck) are normal deps that run at build time only — included,
+  as the brief defines the set.
+- Packages with nested licence files or `links`: only libz-sys (links z; `src/zlib/LICENSE`,
+  `src/zlib-ng/LICENSE.md`, `src/zlib/contrib/{dotzlib/LICENSE_1_0.txt,minizip/LICENSE.Info-Zip}`)
+  and ring (links ring_core_0_17_14_; `third_party/fiat/LICENSE`,
+  `src/polyfill/once_cell/LICENSE-{APACHE,MIT}`; top-level LICENSE points at both).
+- libz-sys 1.1.29 `build_zlib` compiles only `src/zlib/*.c` (zlib 1.3.2 per zlib.h); zlib-ng only
+  with its features (resolve: libz-sys features `[]`). flate2 has both `zlib` and
+  `rust_backend` (any_c_zlib) → the C zlib is used.
+- **libz-sys picks system libz when it can**: the earlier local musl build
+  (`~/src/symdev-musl/target/.../build/libz-sys-*/output`) ran the `-lz` smoke test with the
+  host cc, it passed, so `cargo:rustc-link-lib=z` and `out/lib` is empty — the binary got
+  the host's glibc-built libz.a. On a runner with zlib1g-dev the same can happen (musl-gcc
+  keeps the default library dirs). `LIBZ_SYS_STATIC=1` (an `option_env!` in its build.rs)
+  forces `build_zlib` → bundled zlib, compiled by the musl compiler. build.sh must set it.
+- rustc 1.98.1 musl link line (`--print link-args` of a hello): `cc … self-contained/rcrt1.o
+  crti.o crtbeginS.o … -lunwind -lc … -nodefaultlibs … crtendS.o crtn.o -static-pie`, all from
+  `<sysroot>/lib/rustlib/x86_64-unknown-linux-musl/lib/self-contained/`.
+  - libc.a: musl **1.2.5** (`version.lo` holds "1.2.5", built by musl-cross-make, GCC 9.4.0);
+    crt1/crti/crtn from musl too.
+  - crtbeginS.o/crtendS.o: LLVM compiler-rt `crtbegin.c` (symbols `__do_init`,
+    `__EH_FRAME_LIST__`; not GCC's crtstuff.c).
+  - libunwind.a: LLVM libunwind (`libunwind.o`, `UnwindLevel1.o`, `Unwind-EHABI.o`…).
+  - libcompiler_builtins rlib holds compiler-rt C objects (`absvdi2.o`, `int_util.o`, 311
+    members).
+- Licence texts the toolchain ships (rustc component): `share/doc/rust/COPYRIGHT-library.html`
+  (std + its crates; no musl libc, no llvm-project), `share/doc/rust/COPYRIGHT.html` (whole
+  toolchain; `src/llvm-project`: `Apache-2.0 WITH LLVM-exception AND NCSA`),
+  `share/doc/rust/licenses/{Apache-2.0,LLVM-exception,NCSA,MIT,…}.txt`.
+- **musl's COPYRIGHT is nowhere on this host** (rust-std ships libc.a without it; not in the
+  cargo registry, rust-src, /usr/share/doc; no musl package installed). Not downloaded
+  (needs the owner's approval) → listed with SPDX MIT and "no file shipped": a gap to report.
+
+## Decisions
+
+- install.sh served as `text/plain; charset=utf-8`: a registered type (RFC 2046/6657) that
+  every browser shows inline (people read a `curl | sh` script first); `text/x-shellscript`
+  is an unregistered `x-` type (RFC 6838) whose browser handling varies; sh ignores it.
+- Generator in Python 3 (stdlib only), `tools/third_party_notices.py`, not under
+  `recipes/symdev/` (symdev.yml's "newest recipe" lists that directory).
+
+---
+
 # WIP: §12 prebuilt symdev + rust-sdk — branch `prebuilt`
 
 Brief from the lead (2026-10-02): spec §12 of
