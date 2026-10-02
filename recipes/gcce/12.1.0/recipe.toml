@@ -1,0 +1,53 @@
+# gcce;12.1.0 — GNU binutils 2.29.1 and GCC 12.1.0 for arm-none-symbianelf, one prefix.
+#
+# Reproduces the toolchain symdev was developed with (~/gcc-builds on the owner's host,
+# built by fedor4ever/GCC4Symbian's build-toolchain.sh); the steps and flags in build.sh
+# are the ones recovered from that build (symdev experiment 107). build.sh reads the
+# [[source]] tables below: `url` first, then `sha256`; the file name is the URL's last
+# path segment.
+id = "gcce;12.1.0"
+license = "GPL-3.0-or-later"
+host = "x86_64-linux"
+build = "build.sh"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/gcc/gcc-12.1.0/gcc-12.1.0.tar.xz"
+sha256 = "62fd634889f31c02b64af2c468f064b47ad1ca78411c45abe6ac4b5f8dd19c7b"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/binutils/binutils-2.29.1.tar.xz"
+sha256 = "e7010a46969f9d3e53b650a518663f98a5dde3c3ae21b7d71e5e6803bc36b577"
+
+# GCC's prerequisites, built in-tree (statically linked into cc1/cc1plus, so the package
+# needs no libgmp/libmpfr/libmpc on the user's machine). Versions are the ones
+# GCC4Symbian unpacked into the GCC tree.
+[[source]]
+url = "https://ftp.gnu.org/gnu/gmp/gmp-6.1.0.tar.bz2"
+sha256 = "498449a994efeba527885c10405993427995d3f86b8768d8cdf8d9dd7c6b73e8"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/mpfr/mpfr-4.1.0.tar.bz2"
+sha256 = "feced2d430dd5a97805fa289fed3fc8ff2b094c02d05287fd6133e7f1f0ec926"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/mpc/mpc-1.2.1.tar.gz"
+sha256 = "17503d2c395dfcf106b622dc142683c1199431d095367c6aacba6eec30340459"
+
+[[source]]
+url = "https://gcc.gnu.org/pub/gcc/infrastructure/isl-0.16.1.tar.bz2"
+sha256 = "412538bb65c799ac98e17e8cfcdacbb257a57362acfaaff254b0fcae970126d2"
+
+# GCC4Symbian at fe1b15a: libgcc/libgcov-driver.c with a fallback `__INTPTR_TYPE__`
+# (arm-none-symbianelf does not predefine it), and the two headers its build installs as
+# the target's sys-include (libstdc++'s configure needs stdio.h's EOF and SEEK_*).
+[[source]]
+url = "https://raw.githubusercontent.com/fedor4ever/GCC4Symbian/fe1b15a1c25716d5c515f12593080d58f14d4c3f/build-data/GCC-12.1.0/libgcov-driver.c"
+sha256 = "3178078259108b36b0789c71a638c2c7ab1348594a768598342b36eeaece7011"
+
+[[source]]
+url = "https://raw.githubusercontent.com/fedor4ever/GCC4Symbian/fe1b15a1c25716d5c515f12593080d58f14d4c3f/sys-include/stdint.h"
+sha256 = "1456147206d28254d03b8e51244fa4c33795f1095c771188995f5a7f79e02848"
+
+[[source]]
+url = "https://raw.githubusercontent.com/fedor4ever/GCC4Symbian/fe1b15a1c25716d5c515f12593080d58f14d4c3f/sys-include/stdio.h"
+sha256 = "968ac4b1dd3d480f066ef97754e971a4c2683e9fde8d252ee9edae7fa3275a37"
