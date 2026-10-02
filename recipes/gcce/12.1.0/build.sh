@@ -10,8 +10,9 @@
 # Steps and flags are the ones recovered from the host build symdev was developed with
 # (GCC4Symbian's build-toolchain.sh, plus binutils 2.29.1 configured like its binutils
 # step); symdev experiment 107. Nothing here was added beyond what that build did, except
-# that binutils is 2.29.1 (GCC4Symbian's 2.35 ld rejects the SDK's euser.dso) and gdb is
-# not built.
+# that binutils is 2.29.1 (GCC4Symbian's 2.35 ld rejects the SDK's euser.dso), gdb is not
+# built, and the three files that build took from GCC4Symbian are ours, next to this
+# script (symdev experiment 108: the same target libraries and c++config.h).
 set -euo pipefail
 
 if [ $# -ne 1 ] || [ "${1#/}" = "$1" ]; then
@@ -57,7 +58,8 @@ for lib in gmp-6.1.0.tar.bz2 mpfr-4.1.0.tar.bz2 mpc-1.2.1.tar.gz isl-0.16.1.tar.
   tar -xf "$lib"
   mv "$dir" "gcc-12.1.0/${dir%-*}"
 done
-cp libgcov-driver.c gcc-12.1.0/libgcc/libgcov-driver.c
+# arm-none-symbianelf predefines no __INTPTR_TYPE__, which libgcov-driver.c casts through.
+patch -d gcc-12.1.0 -p1 < "$here/libgcov-intptr.patch"
 
 # --- binutils --------------------------------------------------------------------------
 mkdir build-binutils
@@ -73,8 +75,9 @@ mkdir build-binutils
 )
 
 # --- the target's sys-include ----------------------------------------------------------
+# The target has no C library here; GCC's build only needs these two to exist (see each).
 mkdir -p "$prefix/$target/sys-include"
-cp stdint.h stdio.h "$prefix/$target/sys-include/"
+cp "$here/sys-include/stdint.h" "$here/sys-include/stdio.h" "$prefix/$target/sys-include/"
 
 # --- gcc -------------------------------------------------------------------------------
 mkdir build-gcc
