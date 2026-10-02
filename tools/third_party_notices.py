@@ -269,9 +269,17 @@ class Toolchain:
                       HtmlText.of(self.doc_text("COPYRIGHT-library.html")))],
                     note="std, core, alloc and the crates they use, as the toolchain's own "
                          "notice file lists them.")
-        musl_entry = Entry(f"musl libc {musl[0].decode()}", "MIT", [], note=(
-            "libc.a and the crt1/rcrt1/crti/crtn objects of the toolchain's self-contained "
-            "directory. The Rust toolchain installs them without musl's COPYRIGHT file."))
+        version = musl[0].decode()
+        copyright = Path(__file__).resolve().parent / "notices" / f"musl-{version}" / "COPYRIGHT"
+        expect(copyright.is_file(),
+               f"musl {version}'s COPYRIGHT at {copyright} (the toolchain ships libc.a without "
+               f"it; add it from the signed musl-{version} release tarball)")
+        musl_entry = Entry(f"musl libc {version}", "MIT",
+                           [(f"musl-{version}/COPYRIGHT", read_text(copyright, str(copyright)))],
+                           note=("libc.a and the crt1/rcrt1/crti/crtn objects of the "
+                                 "toolchain's self-contained directory; the licence file comes "
+                                 "from musl's signed release tarball (tools/notices/"
+                                 f"musl-{version}/SOURCE)."))
         return [std, musl_entry, self.llvm()]
 
     def llvm(self):

@@ -222,9 +222,11 @@ class ToolchainTest(unittest.TestCase):
             self.assertEqual(text.count("Copyright notices for The Rust Standard Library"), 1)
             self.assertIn("\nThe MIT License (MIT)\n\n    Copyright (c) 2015 Someone <a@b>\n",
                           text)
-            self.assertEqual((musl.title, musl.license, musl.files),
-                             ("musl libc 1.2.5", "MIT", []))
-            self.assertIn("COPYRIGHT", musl.note)
+            self.assertEqual((musl.title, musl.license), ("musl libc 1.2.5", "MIT"))
+            [(name, text)] = musl.files
+            self.assertEqual(name, "musl-1.2.5/COPYRIGHT")
+            self.assertIn("musl as a whole is licensed under the following standard MIT", text)
+            self.assertIn("SOURCE", musl.note)
             self.assertEqual(llvm.license, "Apache-2.0 WITH LLVM-exception AND NCSA")
             names = [name for name, _ in llvm.files]
             self.assertEqual(names[1:], [f"share/doc/rust/licenses/{s}.txt"
@@ -239,6 +241,14 @@ class ToolchainTest(unittest.TestCase):
             toolchain = tpn.Toolchain(sysroot(tmp, unwind_member="h1-other.o"), TARGET, "rustc")
             with self.assertRaisesRegex(tpn.NoticeError, "libunwind.a"):
                 toolchain.entries()
+
+    def test_a_musl_version_without_its_copyright_is_an_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = sysroot(tmp)
+            libc = root / "lib/rustlib" / TARGET / "lib/self-contained/libc.a"
+            libc.write_bytes(libc.read_bytes().replace(b"1.2.5", b"9.9.9"))
+            with self.assertRaisesRegex(tpn.NoticeError, "musl 9.9.9's COPYRIGHT"):
+                tpn.Toolchain(root, TARGET, "rustc").entries()
 
     def test_another_target_is_an_error(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -259,8 +269,8 @@ class NoticesTest(unittest.TestCase):
                 self.assertIn(part, text)
             self.assertNotIn("build-only", text)
             self.assertNotIn("dev-only", text)
-            self.assertIn("Entries without a licence file: e 1.0.0, musl libc 1.2.5", text)
-            self.assertEqual(text.count("No licence file"), 2)
+            self.assertIn("Entries without a licence file: e 1.0.0\n", text)
+            self.assertEqual(text.count("No licence file"), 1)
 
 
 if __name__ == "__main__":

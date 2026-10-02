@@ -1,0 +1,7 @@
+COPYRIGHT is musl 1.2.5's own licence file, unchanged, taken from
+https://musl.libc.org/releases/musl-1.2.5.tar.gz
+sha256 a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4,
+whose signature musl-1.2.5.tar.gz.asc verified (2026-10-02) against the musl release key
+8364 8929 0BB6 B70F 99FF  DA05 56BC DB59 3020 450F.
+The Rust toolchain installs musl's libc.a for x86_64-unknown-linux-musl without this file;
+tools/third_party_notices.py ships it when the toolchain's musl is exactly this version.
