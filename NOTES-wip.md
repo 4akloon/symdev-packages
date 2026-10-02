@@ -16,7 +16,7 @@ compile-time source-checkout fallback for the Rust SDK; changed on another branc
 | baseline: cargo test | 41 + 5 pass (da61f8a) |
 | 1 publish file + symdev.yml | done (53 + 9 tests) |
 | SYMDEV_RELEASE=1 in build.sh | done (prefix on the cargo build line; symdev side on another branch) |
-| 2 notices generator + build.sh | todo (research done, below) |
+| 2 notices generator + build.sh | done (13 Python tests; local build.sh run) |
 | 3 install test in CI | todo |
 
 ## Facts (item 2, measured 2026-10-02 on toolchain-manager 5c90f9c)
@@ -56,6 +56,43 @@ compile-time source-checkout fallback for the Rust SDK; changed on another branc
 - **musl's COPYRIGHT is nowhere on this host** (rust-std ships libc.a without it; not in the
   cargo registry, rust-src, /usr/share/doc; no musl package installed). Not downloaded
   (needs the owner's approval) → listed with SPDX MIT and "no file shipped": a gap to report.
+
+## Item 2: THIRD-PARTY-NOTICES.txt (2026-10-02)
+
+- `tools/third_party_notices.py` (Python 3 stdlib; needs cargo, rustc, ar): `--manifest-path
+  <checkout>/Cargo.toml --package symdev-cli --target x86_64-unknown-linux-musl --output <f>`.
+  Section 1: crates from `cargo metadata --locked --filter-platform` (normal deps from the
+  package, workspace members left out), SPDX as declared, full text of top-level
+  LICENSE*/LICENCE*/COPYING*/NOTICE*/COPYRIGHT* (a matching directory: all its files) and
+  `license_file`. Section 2: `BUNDLED` table (libz-sys: zlib <ver from zlib.h>; ring:
+  BoringSSL-derived C/asm, fiat-crypto, once_cell polyfill), fail-closed: a crate with
+  `links` or a nested licence file the table does not name is an error. Section 3:
+  toolchain runtime, checked with `ar` (musl version from libc.a(version.lo), LLVM
+  libunwind.o in libunwind.a, `__EH_FRAME_LIST__` in crtbeginS.o, int_util.o in
+  compiler_builtins) — anything else is an error; std = COPYRIGHT-library.html as text
+  (`<pre>` verbatim); LLVM = the `src/llvm-project` <div> of COPYRIGHT.html + licenses/<id>.txt
+  for each id of its expression; musl = MIT, no file. Writes via `.partial` + rename.
+- Tests `tests/third_party_notices_test.py` (13; `python3 -m unittest discover -s tests -p
+  '*_test.py'`): RED = module missing; mutations caught: walking build/dev deps, keeping
+  members, ignoring `links`, no nested check, collapsing <pre>. A real run first gave 17 MB:
+  the LLVM regex ran on into COPYRIGHT.html's out-of-tree texts (14.5 MB) → test with text
+  after the div (RED) → extract the <div> from the HTML (GREEN). Head/<title> skipped (RED/GREEN).
+- Real run, toolchain-manager 742d76d: **117 third-party crates** (+14 workspace crates),
+  4 bundled entries, 3 toolchain entries; every crate ships at least one licence file;
+  **only gap: musl libc 1.2.5** (no COPYRIGHT on this host). 2 821 913 bytes, 78 KB gzipped.
+- build.sh: `LIBZ_SYS_STATIC=1` on the cargo line + check that the newest
+  `libz-sys-*/output` says `cargo:rustc-link-lib=static=z`; LICENSE moved to
+  `share/doc/symdev/LICENSE` beside THIRD-PARTY-NOTICES.txt (generator failure → build fails).
+- Local build.sh run (scratch bare repo of toolchain-manager 742d76d tagged v0.1.0, recipe copy
+  with `git = file://…`, `CC_x86_64_unknown_linux_musl=gcc` — informational, not a release):
+  ok in 15 s; static-pie; libz-sys out/lib has the 15 zlib objects; the binary holds zlib
+  "1.3.2" (bundled) where the earlier build without the variable holds "inflate 1.3.1
+  Copyright 1995-2024" (= `~/.local/native-cc/usr/lib/x86_64-linux-gnu/libz.a`, glibc-built).
+  `publish public 'symdev;0.1.0' --dry-run`: 3 108 985 bytes, entries bin/symdev,
+  share/doc/symdev/{LICENSE,THIRD-PARTY-NOTICES.txt}. Failure paths: ring removed from
+  BUNDLED (scratch copy) → `error: ring 0.17.14 links `ring_core_0_17_14_` …`, exit 1, no
+  notices file; LIBZ_SYS_STATIC dropped (scratch copy) → `error: libz-sys did not link its
+  bundled zlib statically (…/output)`, exit 1.
 
 ## Item 1: `publish file` (2026-10-02)
 

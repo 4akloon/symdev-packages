@@ -11,7 +11,10 @@ tag = "v0.1.0"
 build = "build.sh"
 
 # bin/symdev, static (x86_64-unknown-linux-musl), so it runs on any x86_64 Linux whatever
-# its glibc; and LICENSE, since MIT asks for the notice in every copy.
+# its glibc; share/doc/symdev/LICENSE, since MIT asks for the notice in every copy, and
+# share/doc/symdev/THIRD-PARTY-NOTICES.txt, the notices of everything the binary links
+# (crates, the C they bundle, the Rust toolchain's musl runtime), which their licences ask
+# for in a binary distribution.
 [[package]]
 id = "symdev;0.1.0"
 license = "MIT"
