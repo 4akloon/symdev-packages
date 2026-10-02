@@ -145,6 +145,35 @@ recipe format/publish extended for two packages + git source; (2) workflow on
 - Not done (outside the brief): uploading install.sh to the bucket root (no-cache) — needs a
   publisher step or workflow upload; running tests/install.sh.test in CI.
 
+## Lead's decision on rust-sdk contents (2026-10-02) and how the recipe meets it
+
+- Lead: keep the REPOSITORY layout (symdev side, tm-rust-sdk, `RustSdkPackage::REQUIRED` =
+  `symbian-rs/targets/arm-symbian-e32.json`, `crates/symdev-locale/Cargo.toml`, `Cargo.toml`;
+  SDK = `<package>/symbian-rs`); pack `Cargo.toml`, `crates/symdev-locale`, `symbian-rs`
+  without `target/` and `corpus/`; examples out unless needed. Reason: symbian-macros depends
+  on `../../../crates/symdev-locale`, which inherits from the root `[workspace.package]`.
+- Examples ARE needed (measured): tree without `symbian-rs/examples`, read-only, `symdev
+  build` of a scaffolded Rust hello → `cargo build --profile libcalls -p symbian-libcalls
+  --manifest-path …/symbian-rs/crates/symbian-libcalls/Cargo.toml … failed (status 101):
+  error: failed to load manifest for workspace member …/symbian-rs/examples/async`.
+- Recipe include = `LICENSE`, `Cargo.toml`, `crates/symdev-locale` and every top-level entry
+  of `symbian-rs` but `corpus` (now including `.cargo`, to be exactly "symbian-rs minus
+  corpus"). publish's include has no exclusions, so symbian-rs's entries are listed; build.sh
+  fails if the tag has a `symbian-rs/<entry>` the list does not name (checked: removing
+  `.cargo` from the list → `error: v0.1.0 has symbian-rs/.cargo, which the rust-sdk include
+  list … does not name; add it`). target/ cannot appear: the tree is a git archive.
+- New test `the_rust_sdk_keeps_the_repository_layout_without_corpus_or_build_output` packs
+  the real recipe against a fake checkout (with corpus, target/, crates/symdev-cli): RED
+  without `.cargo`, GREEN with it.
+- Full §12 flow on toolchain-manager ea55371 (scratch tag): build.sh (informational CC) →
+  `publish --dry-run` of rust-sdk (377 928 bytes) then symdev (3 034 281) into a local bucket
+  → install.sh (dash) installs symdev → with `builtin = false` + a `file://` source, the
+  installed static symdev's `symdev new hello --language rust` auto-installs
+  `rust-sdk;0.1.0 (0.4 MB) from test`; `symdev build` (rust-sdk made read-only) → hello.exe;
+  `symdev sdk list`: `installed rust-sdk;0.1.0 (test)`, `installed symdev;0.1.0 (public)`.
+  (A fake HOME broke only this host's `~/.local/bin/cc` wrapper, which execs
+  `$HOME/.local/native-cc/…`; rerun with the real HOME and SYMDEV_HOME/XDG_* isolated.)
+
 ---
 
 # WIP: Track E (publisher) — branch `publish`

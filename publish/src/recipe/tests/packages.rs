@@ -110,3 +110,60 @@ fn a_one_package_recipe_may_name_its_git_source() {
         Host::X86_64Linux
     );
 }
+
+/// The real `recipes/symdev/0.1.0/recipe.toml` against a tree shaped like the tag's
+/// checkout: the package keeps the repository layout symdev expects (`<package>/symbian-rs`
+/// is the Rust SDK; symbian-macros reaches `crates/symdev-locale` through `../../../`), and
+/// leaves out the corpus, build output and the host crates the SDK does not use.
+#[test]
+fn the_rust_sdk_keeps_the_repository_layout_without_corpus_or_build_output() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../recipes/symdev/0.1.0/recipe.toml"
+    );
+    let recipe = Recipe::parse(&fs::read_to_string(path).unwrap(), path, "rust-sdk;0.1.0");
+    let tree = tempfile::tempdir().unwrap();
+    for file in [
+        "LICENSE",
+        "Cargo.toml",
+        "Cargo.lock",
+        "crates/symdev-locale/Cargo.toml",
+        "crates/symdev-cli/Cargo.toml",
+        "symbian-rs/.cargo/config.toml",
+        "symbian-rs/Cargo.toml",
+        "symbian-rs/Cargo.lock",
+        "symbian-rs/rust-toolchain.toml",
+        "symbian-rs/targets/arm-symbian-e32.json",
+        "symbian-rs/crates/symbian-macros/Cargo.toml",
+        "symbian-rs/rust-src/overlay.toml",
+        "symbian-rs/shims/common/symrs_shim.h",
+        "symbian-rs/examples/async/Cargo.toml",
+        "symbian-rs/corpus/65-hello/hello.exe",
+        "symbian-rs/target/release/libhello.a",
+        "target/release/symdev",
+    ] {
+        let full = tree.path().join(file);
+        fs::create_dir_all(full.parent().unwrap()).unwrap();
+        fs::write(full, file).unwrap();
+    }
+    let out = tempfile::tempdir().unwrap();
+    let archive = recipe.unwrap().pack(tree.path(), out.path()).unwrap();
+    let (_keep, unpacked) = unpack(&archive.path);
+    assert_eq!(
+        files(&unpacked),
+        [
+            "Cargo.toml",
+            "LICENSE",
+            "crates/symdev-locale/Cargo.toml",
+            "symbian-rs/.cargo/config.toml",
+            "symbian-rs/Cargo.lock",
+            "symbian-rs/Cargo.toml",
+            "symbian-rs/crates/symbian-macros/Cargo.toml",
+            "symbian-rs/examples/async/Cargo.toml",
+            "symbian-rs/rust-src/overlay.toml",
+            "symbian-rs/rust-toolchain.toml",
+            "symbian-rs/shims/common/symrs_shim.h",
+            "symbian-rs/targets/arm-symbian-e32.json",
+        ]
+    );
+}

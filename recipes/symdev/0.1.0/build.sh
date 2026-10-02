@@ -62,6 +62,13 @@ workspace=$(awk '/^\[/ { section = $0 } section == "[workspace.package]" &&
 [ "$workspace" = "$version" ] ||
   fail "$tag's workspace version is '$workspace', but $recipe builds $version"
 echo "symdev $version: $git_url $tag = $commit"
+# rust-sdk takes all of symbian-rs but corpus/ (recipe.toml says why); an entry a later tag
+# adds must not be left out without a word.
+for entry in $(git -C "$src" ls-tree --name-only "$tag" symbian-rs/); do
+  [ "$entry" != symbian-rs/corpus ] || continue
+  grep -qF "\"$entry\"" "$recipe" ||
+    fail "$tag has $entry, which the rust-sdk include list of $recipe does not name; add it"
+done
 
 # --- static binary ---------------------------------------------------------------------
 rustc -vV
