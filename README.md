@@ -18,7 +18,7 @@ recipes/symdev/0.1.0/recipe.toml         # symdev;0.1.0 + rust-sdk;0.1.0 from th
 recipes/symdev/0.1.0/build.sh
 install.sh                               # installs the newest symdev from the public bucket
 publish/                                 # the publisher (Rust, on symdev-sdk)
-.github/workflows/                       # build.yml (PRs, no upload), publish.yml (main)
+.github/workflows/                       # build.yml (PRs, no upload), publish.yml (main), symdev.yml
 ```
 
 ## Recipes
@@ -69,6 +69,8 @@ cargo run --release -p publish -- private 'sdk;s60-3rd-fp2;1.1' \
 
 `build.yml` (pull requests) builds GCCE in a Debian 11 container and packs it with
 `publish public … --dry-run`; `publish.yml` (push to `main` under `recipes/gcce/`, or by
-hand) does the same and uploads. Settings: repository variable `PUBLIC_READ_URL` (the
+hand) does the same and uploads. `symdev.yml` does both for `recipes/symdev/<ver>/`: it
+builds a static symdev (musl) from the recipe's tag, dry-runs both packages on every run,
+and on `main` (or by hand, with the version) uploads `rust-sdk;<ver>`, then `symdev;<ver>`. Settings: repository variable `PUBLIC_READ_URL` (the
 public bucket's r2.dev URL, read by dry runs); environment `publish` with variable
 `PUBLISH_PUBLIC_URL` and secrets `PUBLISH_ACCESS_KEY_ID`, `PUBLISH_SECRET_ACCESS_KEY`.

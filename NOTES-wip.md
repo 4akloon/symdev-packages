@@ -16,7 +16,7 @@ recipe format/publish extended for two packages + git source; (2) workflow on
 |---|---|
 | publish: multi-package recipe, git/tag keys | done 1480ce9 (40+5 tests) |
 | recipe + build.sh | done |
-| workflow | todo |
+| workflow | done |
 | install.sh + test | todo |
 | local musl attempt | done: fails without musl-gcc (libz-sys), see below |
 
@@ -107,6 +107,21 @@ recipe format/publish extended for two packages + git source; (2) workflow on
   fake SYMDEV_HOME: the packed static symdev + `SYMDEV_RUST_SDK=<rust-sdk>/symbian-rs`
   scaffold and build a Rust hello.
 - No shellcheck on this host (dash and busybox are).
+
+## Workflow (2026-10-02)
+
+- New `.github/workflows/symdev.yml` (build.yml/publish.yml untouched except build.yml's PR
+  filter `recipes/**` → `recipes/gcce/**`, so a symdev recipe PR does not start a GCCE build).
+- Jobs: `build` (ubuntu-24.04 runner — a static binary needs no old glibc; apt musl-tools;
+  rustup 1.98.1 + musl target; choose the recipe dir the change touches (PR base / push
+  before; none → newest; >1 → error; dispatch input validated); build.sh; dry-run both
+  packages against `vars.PUBLIC_READ_URL`; tar of out/ as artifact), `publish-rust-sdk`, then
+  `publish-symdev` (each `environment: publish`, `concurrency: publish`, push/dispatch only).
+  Two jobs so "Re-run failed jobs" after a symdev failure does not stop at rust-sdk's
+  "already published".
+- Checked: YAML parses (python yaml); the choose step run in a mock repo for 7 cases
+  (publisher-only → newest, new 0.2.0, two versions → error, dispatch ok/`../x`/missing,
+  zero `before`). Not runnable until R4 (publish's path dep), noted in the header.
 
 ---
 
