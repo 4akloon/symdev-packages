@@ -57,15 +57,21 @@ impl Bucket {
     }
 
     pub fn put_archive(&self, key: &str, archive: &Archive) -> Result<()> {
-        let url = self.url(key)?;
         let (content_type, cache_control) = ARCHIVE;
-        self.fetch.put_file(
-            &url,
-            &archive.path,
-            &archive.sha256,
-            content_type,
-            cache_control,
-        )
+        self.put_object(key, archive, content_type, cache_control)
+    }
+
+    /// Uploads `file` as the object `key` with the headers given.
+    pub fn put_object(
+        &self,
+        key: &str,
+        file: &Archive,
+        content_type: &str,
+        cache_control: &str,
+    ) -> Result<()> {
+        let url = self.url(key)?;
+        self.fetch
+            .put_file(&url, &file.path, &file.sha256, content_type, cache_control)
     }
 
     /// Uploads `index` as the bucket's `index.toml`.

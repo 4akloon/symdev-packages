@@ -14,6 +14,10 @@
 # (main only) with variable PUBLISH_PUBLIC_URL and secrets PUBLISH_ACCESS_KEY_ID,
 # PUBLISH_SECRET_ACCESS_KEY.
 #
+# install.sh (spec §12) lives at the public bucket's root: publish-symdev uploads it last,
+# after symdev;<ver> is in the index, and a manual run with `install_sh_only` uploads only
+# it (after a fix to install.sh, without a release).
+#
 # Not runnable yet, on purpose: publish's symdev-sdk dependency is a local path until task R4
 # switches it to a git tag (as build.yml and publish.yml).
 name: symdev
@@ -32,8 +36,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "The recipe to build and publish: recipes/symdev/<version>"
-        required: true
+        description: "The recipe to build and publish: recipes/symdev/<version> (not used with install_sh_only)"
+        required: false
+      install_sh_only:
+        description: "Only upload install.sh to the public bucket's root; build and publish nothing"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -43,6 +51,7 @@ env:
 
 jobs:
   build:
+    if: github.event_name != 'workflow_dispatch' || !inputs.install_sh_only
     # A static binary does not depend on the runner's glibc, so no container is needed.
     runs-on: ubuntu-24.04
     outputs:
@@ -63,6 +72,10 @@ jobs:
         run: |
           versions=
           if [ "$EVENT" = workflow_dispatch ]; then
+            if [ -z "$INPUT_VERSION" ]; then
+              echo "::error::give the version of the recipe to release (recipes/symdev/<version>), or set install_sh_only"
+              exit 1
+            fi
             versions=$INPUT_VERSION
           elif git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             versions=$(git diff --name-only "$BASE" HEAD -- recipes/symdev/ | cut -d/ -f3 | sort -u)
@@ -114,6 +127,13 @@ jobs:
               --source-code "$RUNNER_TEMP/out/symdev-$VERSION-source.tar.gz" \
               --recipe "recipes/symdev/$VERSION/recipe.toml" --dry-run
           done
+
+      # The command publish-symdev ends with, checked here so a mistake shows up in the PR.
+      - name: Check the install.sh upload (dry run)
+        run: |
+          cargo run --release --locked -p publish -- file install.sh --to install.sh \
+            --bucket public --content-type "text/plain; charset=utf-8" \
+            --cache-control no-cache --dry-run
 
       # An artifact does not keep file modes; a tar does (bin/symdev stays executable).
       - name: Hand the build to the publish jobs
@@ -200,3 +220,47 @@ jobs:
             --from "$RUNNER_TEMP/out/symdev" \
             --source-code "$RUNNER_TEMP/out/symdev-$VERSION-source.tar.gz" \
             --recipe "recipes/symdev/$VERSION/recipe.toml"
+
+      # Last, so `curl …/install.sh | sh` never meets an index without the symdev it installs.
+      # Mutable by design, unlike the content-addressed archives: every upload replaces it,
+      # and no-cache makes caches revalidate, so a fix reaches users on their next run. Served
+      # as text/plain; charset=utf-8: a browser shows it to someone reading it before piping
+      # it to sh (its comments hold UTF-8), and sh ignores the type.
+      - name: Upload install.sh to the public bucket's root
+        env:
+          PUBLISH_PUBLIC_URL: ${{ vars.PUBLISH_PUBLIC_URL }}
+          PUBLISH_ACCESS_KEY_ID: ${{ secrets.PUBLISH_ACCESS_KEY_ID }}
+          PUBLISH_SECRET_ACCESS_KEY: ${{ secrets.PUBLISH_SECRET_ACCESS_KEY }}
+        run: |
+          cargo run --release --locked -p publish -- file install.sh --to install.sh \
+            --bucket public --content-type "text/plain; charset=utf-8" \
+            --cache-control no-cache
+
+  # A manual run with install_sh_only: re-upload install.sh from the dispatched ref (the
+  # environment admits main only) and nothing else. Not in the `publish` concurrency group:
+  # it does not touch the index, and a pending job there would cancel a pending publish.
+  install-sh:
+    if: github.event_name == 'workflow_dispatch' && inputs.install_sh_only
+    runs-on: ubuntu-24.04
+    environment: publish
+    concurrency:
+      group: install-sh
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust 1.98.1
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
+
+      # Mutable by design; see the same step in publish-symdev.
+      - name: Upload install.sh to the public bucket's root
+        env:
+          PUBLISH_PUBLIC_URL: ${{ vars.PUBLISH_PUBLIC_URL }}
+          PUBLISH_ACCESS_KEY_ID: ${{ secrets.PUBLISH_ACCESS_KEY_ID }}
+          PUBLISH_SECRET_ACCESS_KEY: ${{ secrets.PUBLISH_SECRET_ACCESS_KEY }}
+        run: |
+          cargo run --release --locked -p publish -- file install.sh --to install.sh \
+            --bucket public --content-type "text/plain; charset=utf-8" \
+            --cache-control no-cache

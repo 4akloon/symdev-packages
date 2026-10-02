@@ -191,3 +191,78 @@ fn a_recipe_that_makes_two_packages_publishes_the_one_named() {
         "{stderr}"
     );
 }
+
+/// `publish file <args…> --dry-run`-style runs on a one-line install.sh.
+fn file(args: &[&str]) -> (Output, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("install.sh"), "#!/bin/sh\n").unwrap();
+    let mut all = vec!["file", "install.sh"];
+    all.extend_from_slice(args);
+    (publish(dir.path(), &all), dir)
+}
+
+const HEADERS: [&str; 4] = [
+    "--content-type",
+    "text/plain; charset=utf-8",
+    "--cache-control",
+    "no-cache",
+];
+
+#[test]
+fn the_file_usage_names_its_arguments_and_both_buckets() {
+    let cwd = tempfile::tempdir().unwrap();
+    let usage = text(&publish(cwd.path(), &["file", "--help"]).stdout);
+    for part in [
+        "<path>",
+        "--to <key>",
+        "--bucket <bucket>",
+        "public",
+        "private",
+        "--content-type <type>",
+        "--cache-control <value>",
+        "--dry-run",
+    ] {
+        assert!(usage.contains(part), "{part}: {usage}");
+    }
+}
+
+#[test]
+fn a_file_dry_run_needs_no_bucket_and_no_key() {
+    let mut args = vec!["--to", "install.sh", "--bucket", "public", "--dry-run"];
+    args.extend(HEADERS);
+    let (output, _dir) = file(&args);
+    let stderr = text(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
+    assert!(
+        stderr.contains("dry run: would upload install.sh (10 bytes"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("Cache-Control: no-cache"), "{stderr}");
+    assert!(output.stdout.is_empty());
+}
+
+#[test]
+fn a_file_is_never_uploaded_as_the_index() {
+    let mut args = vec!["--to", "index.toml", "--bucket", "public", "--dry-run"];
+    args.extend(HEADERS);
+    let (output, _dir) = file(&args);
+    assert!(!output.status.success());
+    let stderr = text(&output.stderr);
+    assert!(
+        stderr.starts_with("error: key `index.toml` is the bucket's index"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn a_file_upload_names_the_variable_of_its_bucket() {
+    let mut args = vec!["--to", "install.sh", "--bucket", "private"];
+    args.extend(HEADERS);
+    let (output, _dir) = file(&args);
+    assert!(!output.status.success());
+    let stderr = text(&output.stderr);
+    assert!(
+        stderr.starts_with("error: PUBLISH_PRIVATE_URL is not set"),
+        "{stderr}"
+    );
+}

@@ -14,7 +14,7 @@ compile-time source-checkout fallback for the Rust SDK; changed on another branc
 | Step | State |
 |---|---|
 | baseline: cargo test | 41 + 5 pass (da61f8a) |
-| 1 publish file + symdev.yml | in progress |
+| 1 publish file + symdev.yml | done (53 + 9 tests) |
 | SYMDEV_RELEASE=1 in build.sh | todo |
 | 2 notices generator + build.sh | todo (research done, below) |
 | 3 install test in CI | todo |
@@ -56,6 +56,30 @@ compile-time source-checkout fallback for the Rust SDK; changed on another branc
 - **musl's COPYRIGHT is nowhere on this host** (rust-std ships libc.a without it; not in the
   cargo registry, rust-src, /usr/share/doc; no musl package installed). Not downloaded
   (needs the owner's approval) → listed with SPDX MIT and "no file shipped": a gap to report.
+
+## Item 1: `publish file` (2026-10-02)
+
+- `publish file <path> --to <key> --bucket public|private --content-type <type>
+  --cache-control <value> [--dry-run]`. Types: `ObjectKey` (object_key.rs: non-empty, no
+  leading `/`, no empty/`.`/`..` segment, not `index.toml`, only `A-Za-z0-9-._~` and `/` —
+  the signer percent-decodes the URL path, so `%` etc. could store under another name),
+  `FileUpload` (file_upload.rs: hashes the file, refuses empty/control-character header
+  values, `run(mode)`: one signed PUT, no index GET/PUT; dry run prints path, size, sha256,
+  key, headers and the URL if the bucket URL is set), `Bucket::put_object` (put_archive uses
+  it). `--bucket` is a CLI-only `BucketName` mapped to `Visibility`.
+- Tests: 6 key, 6 upload on the fake bucket (RED first: missing `parse`/`new`/`run`), 4 CLI
+  (RED: no subcommand). Real binary: dry run prints
+  `… to https://acct.r2.cloudflarestorage.com/symdev-public/install.sh; nothing uploaded`;
+  `--to ../install.sh` → `error: key `../install.sh` has a `..` segment …`.
+- install.sh has non-ASCII (`§`, line 2) → `charset=utf-8` matters for a browser.
+- symdev.yml: build job dry-runs the same `publish file` command (PR catches flag mistakes);
+  publish-symdev ends with the upload; dispatch input `install_sh_only` (boolean) skips build
+  (so both publish jobs) and runs job `install-sh` (environment publish, own concurrency
+  group `install-sh`: the `publish` group keeps one pending run and cancels an older one);
+  `version` is no longer `required` in the form, the choose step errors on an empty one.
+  Checked: YAML parses; the choose step in a scratch repo: dispatch ''/0.1.0/../x/0.2.0 →
+  error/ok/error/error, push with zero `before` → newest. Not checked: the `if:`
+  expressions (no actionlint here; first real run).
 
 ## Decisions
 
