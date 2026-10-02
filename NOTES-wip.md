@@ -1,3 +1,51 @@
+# WIP: §12 prebuilt symdev + rust-sdk — branch `prebuilt`
+
+Brief from the lead (2026-10-02): spec §12 of
+`~/worktrees/symdev/toolchain-manager/docs/superpowers/specs/2026-10-02-toolchain-manager-design.md`,
+packages side. Worktree `~/worktrees/symdev-packages/prebuilt`. Do not touch `recipes/gcce/`
+(branch `gcce-own` changes it). Never push, never merge.
+
+Deliverables: (1) `recipes/symdev/0.1.0/{recipe.toml,build.sh}` → `symdev;0.1.0`
+(x86_64-linux, `bin/symdev`, static musl) + `rust-sdk;0.1.0` (any, symbian-rs tree);
+recipe format/publish extended for two packages + git source; (2) workflow on
+`recipes/symdev/**`; (3) `install.sh` + `tests/install.sh.test`; (4) gates; local musl try.
+
+## Status
+
+| Step | State |
+|---|---|
+| publish: multi-package recipe, git/tag keys | in progress |
+| recipe + build.sh | todo |
+| workflow | todo |
+| install.sh + test | todo |
+| local musl attempt | running |
+
+## Facts
+
+- Receipt (`symdev-sdk/src/receipt.rs`): `toml::to_string` of `{id, sha256, source, url}`,
+  file `.symdev-package.toml`, written last via `.symdev-package.toml.partial` + rename;
+  `SdkHome::install` stages in `$SYMDEV_HOME/.staging/<pid>-<n>` under `$SYMDEV_HOME/.lock`
+  (flock) and **removes all of `.staging`** while holding the lock. `url` = full archive URL.
+  Built-in source name `public`, URL `https://pub-15670d2771364287b9982e497c29f586.r2.dev/`.
+- `ReproducibleTarGz` modes: dirs and files with any x bit → 0755, else 0644.
+- `RustSdk` (symdev-build/src/rust_sdk.rs) reads at build time: `targets/arm-symbian-e32.json`
+  (required by `RustSdk::at`), `crates/<name>` (path deps symbian-core/-std → all crates),
+  `crates/symbian-libcalls/Cargo.toml` (built with `--manifest-path … --profile libcalls`,
+  a profile defined only in the workspace root `Cargo.toml`), `rust-src/overlay{,.toml}`
+  (rust-std projects), `shims/common`, `shims/s60` (`*.cpp`, headers beside them).
+  `TOOLCHAIN_FILE`/`HELLO_MAIN` are `include_str!` (compiled in, not read at run time).
+- symbian-rs: 395 tracked files, all mode 100644, no symlinks; `corpus/` (1.9 MB) holds
+  experiment goldens (`.exe`), read by no build.
+- symdev workspace (toolchain-manager) uses `ring 0.17.14` via rustls/ureq → C/asm under musl.
+- Host: no system gcc; `~/.local/bin/{gcc,cc}` wrap a user-local gcc 15 (`~/.local/native-cc`).
+
+## Decisions
+
+## Next step
+
+
+---
+
 # WIP: Track E (publisher) — branch `publish`
 
 Plan: `/home/genius/worktrees/symdev/toolchain-manager/docs/superpowers/plans/2026-10-02-toolchain-manager.md`
