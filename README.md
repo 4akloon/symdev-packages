@@ -1,0 +1,57 @@
+# symdev-packages
+
+Recipes and the publisher for the packages [symdev](https://github.com/4akloon/symdev)
+installs by itself (`symdev sdk install`, or the first `symdev build`). Design: symdev's
+`docs/superpowers/specs/2026-10-02-toolchain-manager-design.md`, §2 and §6.
+
+This repository never holds a proprietary file: no SDK, firmware, `.sis`, `.sisx`, `.cer`
+or `.key` bytes. The SDK recipe lists paths and pins a hash; the bytes stay on the owner's
+machine and in the private bucket.
+
+## Layout
+
+```
+recipes/gcce/12.1.0/recipe.toml          # sources + sha256; built by build.sh in CI
+recipes/gcce/12.1.0/build.sh
+recipes/sdk/s60-3rd-fp2/1.1/recipe.toml  # paths taken from the SDK, pinned archive sha256
+publish/                                 # the publisher (Rust, on symdev-sdk)
+.github/workflows/                       # build.yml (PRs, no upload), publish.yml (main)
+```
+
+## Recipes
+
+| Key | Meaning |
+|---|---|
+| `id` | package id, e.g. `gcce;12.1.0`; never reused for different bytes |
+| `license` | SPDX expression; a `LicenseRef-…` package is never published publicly |
+| `host` | `x86_64-linux` or `any` |
+| `include` | optional: paths relative to `--from` (a `*` only in the last segment); without it all of `--from` is packed |
+| `sha256` | the archive's hash; required for `private`, checked whenever present |
+| `build`, `[[source]]` | the build script and its pinned sources (read by `build.sh` and CI) |
+
+## Publishing
+
+```
+publish private <id> --from <dir> --recipe <recipe.toml> [--dry-run]
+publish public  <id> --from <prefix> --source-code <tar.gz> --recipe <recipe.toml> [--dry-run]
+```
+
+`publish` packs the package reproducibly into `<sha256>.tar.gz` in the current directory,
+checks the hash against the recipe, reads the bucket's `index.toml` (none yet = empty),
+refuses an id that is already there, then uploads the archive (and for `public` the source
+archive) and the index last. `--dry-run` uploads nothing and prints the index it would
+write.
+
+| Variable | For |
+|---|---|
+| `PUBLISH_PRIVATE_URL`, `PUBLISH_PUBLIC_URL` | the buckets' S3 endpoints, e.g. `https://<account>.r2.cloudflarestorage.com/symdev-private/` |
+| `PUBLISH_ACCESS_KEY_ID`, `PUBLISH_SECRET_ACCESS_KEY` | the publisher key (R2 object read & write) |
+
+A dry run needs none of them; with the bucket URL set it also reads the current index.
+
+The SDK is published by the owner from their own copy:
+
+```bash
+cargo run --release -p publish -- private 'sdk;s60-3rd-fp2;1.1' \
+  --from ~/sdk/S60_3rd_FP2 --recipe recipes/sdk/s60-3rd-fp2/1.1/recipe.toml
+```
