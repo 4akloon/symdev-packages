@@ -3,8 +3,10 @@
 
 mod archive;
 mod bucket;
+mod file_upload;
 mod include;
 mod mode;
+mod object_key;
 mod publication;
 mod recipe;
 mod settings;
@@ -12,12 +14,14 @@ mod visibility;
 
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use symdev_sdk::{Result, SdkError};
 
+use crate::file_upload::FileUpload;
+use crate::object_key::ObjectKey;
 use crate::publication::Publication;
 use crate::recipe::Recipe;
 use crate::settings::Settings;
@@ -71,6 +75,44 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Upload one file as it is to a fixed key (install.sh at the public bucket's root).
+    /// The object is mutable: a later upload replaces it. The index is not touched.
+    File {
+        /// The local file.
+        #[arg(value_name = "path")]
+        path: PathBuf,
+        /// The key in the bucket, relative to its root, e.g. 'install.sh'.
+        #[arg(long, value_name = "key")]
+        to: String,
+        /// The bucket to upload to.
+        #[arg(long, value_name = "bucket")]
+        bucket: BucketName,
+        /// The Content-Type header the object is served with.
+        #[arg(long, value_name = "type")]
+        content_type: String,
+        /// The Cache-Control header the object is served with, e.g. 'no-cache'.
+        #[arg(long, value_name = "value")]
+        cache_control: String,
+        /// Hash the file and say what would be uploaded; upload nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+/// `--bucket`: the bucket a plain file goes to.
+#[derive(Clone, Copy, ValueEnum)]
+enum BucketName {
+    Public,
+    Private,
+}
+
+impl From<BucketName> for Visibility {
+    fn from(name: BucketName) -> Visibility {
+        match name {
+            BucketName::Public => Visibility::Public,
+            BucketName::Private => Visibility::Private,
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -84,36 +126,60 @@ fn main() -> ExitCode {
 }
 
 fn run(command: Command) -> Result<()> {
-    let (visibility, id, from, source_code, recipe_path, dry_run) = match command {
+    match command {
         Command::Private {
             id,
             from,
             recipe,
             dry_run,
-        } => (Visibility::Private, id, from, None, recipe, dry_run),
+        } => publish(Visibility::Private, &id, &from, None, &recipe, dry_run),
         Command::Public {
             id,
             from,
             source_code,
             recipe,
             dry_run,
-        } => (
+        } => publish(
             Visibility::Public,
-            id,
-            from,
-            Some(source_code),
-            recipe,
+            &id,
+            &from,
+            Some(&source_code),
+            &recipe,
             dry_run,
         ),
-    };
+        Command::File {
+            path,
+            to,
+            bucket,
+            content_type,
+            cache_control,
+            dry_run,
+        } => {
+            let key = ObjectKey::parse(&to)?;
+            let mode = Settings::from_env().mode(bucket.into(), dry_run)?;
+            let upload = FileUpload::new(&path, key, &content_type, &cache_control)?;
+            upload.run(&mode, &mut io::stderr().lock())
+        }
+    }
+}
+
+/// `publish private|public`: one package of a recipe.
+fn publish(
+    visibility: Visibility,
+    id: &str,
+    from: &Path,
+    source_code: Option<&Path>,
+    recipe_path: &Path,
+    dry_run: bool,
+) -> Result<()> {
     let mode = Settings::from_env().mode(visibility, dry_run)?;
     let shown = recipe_path.display().to_string();
-    let text = fs::read_to_string(&recipe_path).map_err(|source| SdkError::Io {
+    let text = fs::read_to_string(recipe_path).map_err(|source| SdkError::Io {
         path: shown.clone(),
         source,
     })?;
-    let recipe = Recipe::parse(&text, &shown, &id)?;
-    let publication = Publication::new(visibility, recipe, &from, source_code.as_deref())?;
+    let recipe = Recipe::parse(&text, &shown, id)?;
+    let publication = Publication::new(visibility, recipe, from, source_code)?;
     let out_dir = std::env::current_dir().map_err(|source| SdkError::Io {
         path: ".".into(),
         source,

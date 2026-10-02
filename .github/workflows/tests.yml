@@ -1,0 +1,75 @@
+# The repository's own tests, on every change to what they cover: tests/install.sh.test
+# (install.sh against a fake bucket that `python3 -m http.server` serves on 127.0.0.1, with
+# an index written by `publish --dry-run`), the notices generator's unit tests, and the
+# publisher's cargo tests. Hermetic: no bucket, no secret, nothing leaves the runner.
+#
+# Not runnable yet, on purpose: publish's symdev-sdk dependency is a local path until task R4
+# switches it to a git tag (as build.yml, publish.yml and symdev.yml).
+name: tests
+
+on:
+  pull_request:
+    paths:
+      - "install.sh"
+      - "tests/**"
+      - "tools/**"
+      - "publish/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "install.sh"
+      - "tests/**"
+      - "tools/**"
+      - "publish/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/tests.yml"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      # install.sh.test needs python3 (the fake bucket) and runs install.sh with dash; with
+      # busybox it also runs it in a PATH of busybox applets (wget instead of curl, no flock).
+      # Only what this runner image lacks is installed.
+      - name: Install what the tests need
+        run: |
+          missing=
+          for tool in python3 dash busybox curl ar; do
+            command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+          done
+          echo "missing:${missing:- none}"
+          if [ -n "$missing" ]; then
+            packages=$(echo $missing | sed 's/\bar\b/binutils/')
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends $packages
+          fi
+
+      # Pinned like symdev's CI (workspace rust-version); bump both together.
+      - name: Install Rust 1.98.1
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
+
+      - name: Publisher tests
+        run: cargo test --locked
+
+      - name: install.sh under dash
+        run: sh tests/install.sh.test "$(command -v dash)"
+
+      - name: install.sh under bash
+        run: sh tests/install.sh.test "$(command -v bash)"
+
+      - name: Notices generator tests
+        run: python3 -m unittest discover -s tests -p '*_test.py' -v

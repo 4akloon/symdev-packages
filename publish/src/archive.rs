@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 use symdev_sdk::{Result, SdkError};
 
-/// A `.tar.gz` on disk with its SHA-256 and size: a packed package or a source archive.
+/// A file on disk with its SHA-256 and size: a packed package, a source archive, or a
+/// plain file such as install.sh.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Archive {
     pub path: PathBuf,

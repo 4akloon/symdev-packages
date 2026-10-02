@@ -1,3 +1,161 @@
+# WIP: release prep — branch `release-prep`
+
+Brief (2026-10-02, from the lead): worktree `~/worktrees/symdev-packages/release-prep`; never
+push, merge or add remotes. (1) `publish file` uploads install.sh to the public bucket root
+(no-cache), wired as the last step of symdev.yml's symdev publish job + a dispatch that only
+re-uploads it; (2) THIRD-PARTY-NOTICES.txt for the prebuilt symdev, generated from
+`cargo metadata --filter-platform x86_64-unknown-linux-musl`, shipped as
+`share/doc/symdev/THIRD-PARTY-NOTICES.txt`; (3) tests/install.sh.test in CI. Added mid-task:
+build.sh exports `SYMDEV_RELEASE=1` for the release cargo build (symdev drops its
+compile-time source-checkout fallback for the Rust SDK; changed on another branch).
+
+## Status
+
+| Step | State |
+|---|---|
+| baseline: cargo test | 41 + 5 pass (da61f8a) |
+| 1 publish file + symdev.yml | done (53 + 9 tests) |
+| SYMDEV_RELEASE=1 in build.sh | done (prefix on the cargo build line; symdev side on another branch) |
+| 2 notices generator + build.sh | done (13 Python tests; local build.sh run) |
+| 3 install test in CI | done (.github/workflows/tests.yml) |
+
+Final gates (71a657b): `cargo fmt --check` ok; `cargo clippy --all-targets` 0 warnings
+(fresh); `cargo test` 53 + 9; `tests/install.sh.test` 40 ok under dash with
+`SYMDEV_TEST_BINARY=<the build.sh-made static symdev>` (`symdev sdk list` shows it); Python
+tests 13 OK; all four workflows parse. README updated.
+
+## Next step (open for the lead/owner)
+
+- musl's COPYRIGHT: the only notice gap. Proposal: with the owner's OK, take COPYRIGHT from
+  musl-1.2.5.tar.gz (musl.libc.org, pinned SHA-256), keep it in this repository (e.g.
+  `tools/licenses/musl-1.2.5-COPYRIGHT`) and have the generator use it when libc.a's version
+  matches, failing otherwise.
+- Unverified until CI runs (blocked on R4 like every workflow here): the `if:` expressions of
+  symdev.yml (`install_sh_only`), the musl-gcc build with LIBZ_SYS_STATIC=1, the tests.yml job.
+- install.sh changes on main are uploaded only with the next release or a manual
+  `install_sh_only` run (as briefed); a push trigger on install.sh would be one more job.
+
+## Facts (item 2, measured 2026-10-02 on toolchain-manager 5c90f9c)
+
+- `cargo metadata --format-version 1 --filter-platform x86_64-unknown-linux-musl --offline
+  --locked`: from symdev-cli through normal deps 131 packages, 14 of them symdev's workspace
+  crates (covered by symdev's LICENSE), so 117 third-party; 6 proc-macros (+ syn, quote,
+  proc-macro2, unicode-ident, heck) are normal deps that run at build time only — included,
+  as the brief defines the set.
+- Packages with nested licence files or `links`: only libz-sys (links z; `src/zlib/LICENSE`,
+  `src/zlib-ng/LICENSE.md`, `src/zlib/contrib/{dotzlib/LICENSE_1_0.txt,minizip/LICENSE.Info-Zip}`)
+  and ring (links ring_core_0_17_14_; `third_party/fiat/LICENSE`,
+  `src/polyfill/once_cell/LICENSE-{APACHE,MIT}`; top-level LICENSE points at both).
+- libz-sys 1.1.29 `build_zlib` compiles only `src/zlib/*.c` (zlib 1.3.2 per zlib.h); zlib-ng only
+  with its features (resolve: libz-sys features `[]`). flate2 has both `zlib` and
+  `rust_backend` (any_c_zlib) → the C zlib is used.
+- **libz-sys picks system libz when it can**: the earlier local musl build
+  (`~/src/symdev-musl/target/.../build/libz-sys-*/output`) ran the `-lz` smoke test with the
+  host cc, it passed, so `cargo:rustc-link-lib=z` and `out/lib` is empty — the binary got
+  the host's glibc-built libz.a. On a runner with zlib1g-dev the same can happen (musl-gcc
+  keeps the default library dirs). `LIBZ_SYS_STATIC=1` (an `option_env!` in its build.rs)
+  forces `build_zlib` → bundled zlib, compiled by the musl compiler. build.sh must set it.
+- rustc 1.98.1 musl link line (`--print link-args` of a hello): `cc … self-contained/rcrt1.o
+  crti.o crtbeginS.o … -lunwind -lc … -nodefaultlibs … crtendS.o crtn.o -static-pie`, all from
+  `<sysroot>/lib/rustlib/x86_64-unknown-linux-musl/lib/self-contained/`.
+  - libc.a: musl **1.2.5** (`version.lo` holds "1.2.5", built by musl-cross-make, GCC 9.4.0);
+    crt1/crti/crtn from musl too.
+  - crtbeginS.o/crtendS.o: LLVM compiler-rt `crtbegin.c` (symbols `__do_init`,
+    `__EH_FRAME_LIST__`; not GCC's crtstuff.c).
+  - libunwind.a: LLVM libunwind (`libunwind.o`, `UnwindLevel1.o`, `Unwind-EHABI.o`…).
+  - libcompiler_builtins rlib holds compiler-rt C objects (`absvdi2.o`, `int_util.o`, 311
+    members).
+- Licence texts the toolchain ships (rustc component): `share/doc/rust/COPYRIGHT-library.html`
+  (std + its crates; no musl libc, no llvm-project), `share/doc/rust/COPYRIGHT.html` (whole
+  toolchain; `src/llvm-project`: `Apache-2.0 WITH LLVM-exception AND NCSA`),
+  `share/doc/rust/licenses/{Apache-2.0,LLVM-exception,NCSA,MIT,…}.txt`.
+- **musl's COPYRIGHT is nowhere on this host** (rust-std ships libc.a without it; not in the
+  cargo registry, rust-src, /usr/share/doc; no musl package installed). Not downloaded
+  (needs the owner's approval) → listed with SPDX MIT and "no file shipped": a gap to report.
+
+## Item 3: tests in CI (2026-10-02)
+
+- New `.github/workflows/tests.yml` (pull_request + push to main on install.sh, tests/**,
+  tools/**, publish/**, Cargo.toml, Cargo.lock, itself): ubuntu-24.04; installs only what
+  is missing of python3, dash, busybox, curl, ar (binutils); Rust 1.98.1; `cargo test
+  --locked`; `sh tests/install.sh.test <dash>` and `<bash>`; `python3 -m unittest discover
+  -s tests -p '*_test.py'`. No secrets, `contents: read`; the install test serves its bucket
+  on 127.0.0.1. Blocked like the others until R4 (publish's path dep).
+- Run locally step by step: install step → "missing: none"; cargo test 53 + 9; install test
+  39 ok under dash and bash (busybox case included); notices tests OK. Also on Python 3.13;
+  `ast.parse(feature_version=(3, 8/10/12))` accepts both Python files (runner has 3.12).
+
+## Item 2: THIRD-PARTY-NOTICES.txt (2026-10-02)
+
+- `tools/third_party_notices.py` (Python 3 stdlib; needs cargo, rustc, ar): `--manifest-path
+  <checkout>/Cargo.toml --package symdev-cli --target x86_64-unknown-linux-musl --output <f>`.
+  Section 1: crates from `cargo metadata --locked --filter-platform` (normal deps from the
+  package, workspace members left out), SPDX as declared, full text of top-level
+  LICENSE*/LICENCE*/COPYING*/NOTICE*/COPYRIGHT* (a matching directory: all its files) and
+  `license_file`. Section 2: `BUNDLED` table (libz-sys: zlib <ver from zlib.h>; ring:
+  BoringSSL-derived C/asm, fiat-crypto, once_cell polyfill), fail-closed: a crate with
+  `links` or a nested licence file the table does not name is an error. Section 3:
+  toolchain runtime, checked with `ar` (musl version from libc.a(version.lo), LLVM
+  libunwind.o in libunwind.a, `__EH_FRAME_LIST__` in crtbeginS.o, int_util.o in
+  compiler_builtins) — anything else is an error; std = COPYRIGHT-library.html as text
+  (`<pre>` verbatim); LLVM = the `src/llvm-project` <div> of COPYRIGHT.html + licenses/<id>.txt
+  for each id of its expression; musl = MIT, no file. Writes via `.partial` + rename.
+- Tests `tests/third_party_notices_test.py` (13; `python3 -m unittest discover -s tests -p
+  '*_test.py'`): RED = module missing; mutations caught: walking build/dev deps, keeping
+  members, ignoring `links`, no nested check, collapsing <pre>. A real run first gave 17 MB:
+  the LLVM regex ran on into COPYRIGHT.html's out-of-tree texts (14.5 MB) → test with text
+  after the div (RED) → extract the <div> from the HTML (GREEN). Head/<title> skipped (RED/GREEN).
+- Real run, toolchain-manager 742d76d: **117 third-party crates** (+14 workspace crates),
+  4 bundled entries, 3 toolchain entries; every crate ships at least one licence file;
+  **only gap: musl libc 1.2.5** (no COPYRIGHT on this host). 2 821 913 bytes, 78 KB gzipped.
+- build.sh: `LIBZ_SYS_STATIC=1` on the cargo line + check that the newest
+  `libz-sys-*/output` says `cargo:rustc-link-lib=static=z`; LICENSE moved to
+  `share/doc/symdev/LICENSE` beside THIRD-PARTY-NOTICES.txt (generator failure → build fails).
+- Local build.sh run (scratch bare repo of toolchain-manager 742d76d tagged v0.1.0, recipe copy
+  with `git = file://…`, `CC_x86_64_unknown_linux_musl=gcc` — informational, not a release):
+  ok in 15 s; static-pie; libz-sys out/lib has the 15 zlib objects; the binary holds zlib
+  "1.3.2" (bundled) where the earlier build without the variable holds "inflate 1.3.1
+  Copyright 1995-2024" (= `~/.local/native-cc/usr/lib/x86_64-linux-gnu/libz.a`, glibc-built).
+  `publish public 'symdev;0.1.0' --dry-run`: 3 108 985 bytes, entries bin/symdev,
+  share/doc/symdev/{LICENSE,THIRD-PARTY-NOTICES.txt}. Failure paths: ring removed from
+  BUNDLED (scratch copy) → `error: ring 0.17.14 links `ring_core_0_17_14_` …`, exit 1, no
+  notices file; LIBZ_SYS_STATIC dropped (scratch copy) → `error: libz-sys did not link its
+  bundled zlib statically (…/output)`, exit 1.
+
+## Item 1: `publish file` (2026-10-02)
+
+- `publish file <path> --to <key> --bucket public|private --content-type <type>
+  --cache-control <value> [--dry-run]`. Types: `ObjectKey` (object_key.rs: non-empty, no
+  leading `/`, no empty/`.`/`..` segment, not `index.toml`, only `A-Za-z0-9-._~` and `/` —
+  the signer percent-decodes the URL path, so `%` etc. could store under another name),
+  `FileUpload` (file_upload.rs: hashes the file, refuses empty/control-character header
+  values, `run(mode)`: one signed PUT, no index GET/PUT; dry run prints path, size, sha256,
+  key, headers and the URL if the bucket URL is set), `Bucket::put_object` (put_archive uses
+  it). `--bucket` is a CLI-only `BucketName` mapped to `Visibility`.
+- Tests: 6 key, 6 upload on the fake bucket (RED first: missing `parse`/`new`/`run`), 4 CLI
+  (RED: no subcommand). Real binary: dry run prints
+  `… to https://acct.r2.cloudflarestorage.com/symdev-public/install.sh; nothing uploaded`;
+  `--to ../install.sh` → `error: key `../install.sh` has a `..` segment …`.
+- install.sh has non-ASCII (`§`, line 2) → `charset=utf-8` matters for a browser.
+- symdev.yml: build job dry-runs the same `publish file` command (PR catches flag mistakes);
+  publish-symdev ends with the upload; dispatch input `install_sh_only` (boolean) skips build
+  (so both publish jobs) and runs job `install-sh` (environment publish, own concurrency
+  group `install-sh`: the `publish` group keeps one pending run and cancels an older one);
+  `version` is no longer `required` in the form, the choose step errors on an empty one.
+  Checked: YAML parses; the choose step in a scratch repo: dispatch ''/0.1.0/../x/0.2.0 →
+  error/ok/error/error, push with zero `before` → newest. Not checked: the `if:`
+  expressions (no actionlint here; first real run).
+
+## Decisions
+
+- install.sh served as `text/plain; charset=utf-8`: a registered type (RFC 2046/6657) that
+  every browser shows inline (people read a `curl | sh` script first); `text/x-shellscript`
+  is an unregistered `x-` type (RFC 6838) whose browser handling varies; sh ignores it.
+- Generator in Python 3 (stdlib only), `tools/third_party_notices.py`, not under
+  `recipes/symdev/` (symdev.yml's "newest recipe" lists that directory).
+
+---
+
 # WIP: §12 prebuilt symdev + rust-sdk — branch `prebuilt`
 
 Brief from the lead (2026-10-02): spec §12 of

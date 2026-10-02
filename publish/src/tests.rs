@@ -1,6 +1,7 @@
 //! The publish flow against a fake bucket on 127.0.0.1; nothing here touches the network.
 
 mod fake_bucket;
+mod file_upload;
 mod refusals;
 mod two_packages;
 

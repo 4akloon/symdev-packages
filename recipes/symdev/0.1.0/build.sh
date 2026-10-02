@@ -7,7 +7,9 @@
 # that the tag's workspace version is the version of the recipe's ids, builds a static
 # x86_64 musl binary and fails unless it is static. Writes into <out-dir>:
 #
-#   symdev/                       bin/symdev and LICENSE, for
+#   symdev/                       bin/symdev, and share/doc/symdev/ with LICENSE and
+#                                 THIRD-PARTY-NOTICES.txt (tools/third_party_notices.py of
+#                                 this repository: what the static binary links), for
 #                                 publish public 'symdev;<ver>' --from <out-dir>/symdev
 #   rust-sdk/                     the tag's tree (git archive); recipe.toml's include list
 #                                 takes the Rust SDK out of it, for
@@ -15,7 +17,8 @@
 #   symdev-<ver>-source.tar.gz    git archive of the tag: both packages' --source-code
 #
 # Needs git, cargo with the x86_64-unknown-linux-musl target, a musl C compiler for ring
-# and libz-sys (cc-rs finds musl-gcc, Debian/Ubuntu package musl-tools), file and ldd.
+# and libz-sys (cc-rs finds musl-gcc, Debian/Ubuntu package musl-tools), file, ldd, python3
+# and ar. Runs from its place in the repository (it calls ../../../tools/).
 # CARGO_TARGET_DIR is honoured.
 set -euo pipefail
 
@@ -26,6 +29,7 @@ fi
 mkdir -p "$1"
 out=$(cd "$1" && pwd)
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+notices=$here/../../../tools/third_party_notices.py
 recipe=$here/recipe.toml
 target=x86_64-unknown-linux-musl
 
@@ -72,8 +76,23 @@ done
 
 # --- static binary ---------------------------------------------------------------------
 rustc -vV
-(cd "$src" && cargo build --release --locked -p symdev-cli --target "$target")
-bin=${CARGO_TARGET_DIR:-$src/target}/$target/release/symdev
+# SYMDEV_RELEASE=1, read by symdev at compile time (option_env!), removes its fallback to the
+# source checkout it was built from when it looks for the Rust SDK: on a user's machine that
+# path (this build's $src) is just a directory a local user could create, holding a planted
+# symbian-rs. A released symdev finds the SDK only through SYMDEV_RUST_SDK or the installed
+# rust-sdk package.
+# LIBZ_SYS_STATIC=1 makes libz-sys compile its bundled zlib (the one THIRD-PARTY-NOTICES.txt
+# names) with the musl compiler. Without it libz-sys links any libz its `-lz` test finds,
+# and with musl-gcc or the host cc that can be the build host's glibc-built libz.a (seen in
+# a local build, 2026-10-02).
+(cd "$src" && SYMDEV_RELEASE=1 LIBZ_SYS_STATIC=1 \
+  cargo build --release --locked -p symdev-cli --target "$target")
+release=${CARGO_TARGET_DIR:-$src/target}/$target/release
+bin=$release/symdev
+# What libz-sys' build script told cargo this time (the newest of its output files).
+zlib=$(ls -t "$release"/build/libz-sys-*/output 2>/dev/null | head -n 1 || true)
+[ -n "$zlib" ] && grep -qx 'cargo:rustc-link-lib=static=z' "$zlib" ||
+  fail "libz-sys did not link its bundled zlib statically (${zlib:-no build output}); is LIBZ_SYS_STATIC=1 reaching it?"
 kind=$(file -bL "$bin")
 case $kind in
   *"statically linked"* | *"static-pie linked"*) ;;
@@ -93,8 +112,12 @@ rm -rf "$out/symdev" "$out/rust-sdk"
 mkdir -p "$out/symdev/bin" "$out/rust-sdk"
 cp "$bin" "$out/symdev/bin/symdev"
 chmod 0755 "$out/symdev/bin/symdev"
-cp "$src/LICENSE" "$out/symdev/LICENSE"
+doc=$out/symdev/share/doc/symdev
+mkdir -p "$doc"
+cp "$src/LICENSE" "$doc/LICENSE"
+python3 "$notices" --manifest-path "$src/Cargo.toml" --package symdev-cli --target "$target" \
+  --output "$doc/THIRD-PARTY-NOTICES.txt" || fail "cannot write $doc/THIRD-PARTY-NOTICES.txt"
 git -C "$src" archive "$tag" | tar -x -C "$out/rust-sdk"
 git -C "$src" archive --format=tar.gz --prefix="symdev-$version/" \
   -o "$out/symdev-$version-source.tar.gz" "$tag"
-ls -l "$out/symdev/bin/symdev" "$out/symdev-$version-source.tar.gz"
+ls -l "$out/symdev/bin/symdev" "$doc" "$out/symdev-$version-source.tar.gz"
