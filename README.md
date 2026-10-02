@@ -18,7 +18,10 @@ recipes/symdev/0.1.0/recipe.toml         # symdev;0.1.0 + rust-sdk;0.1.0 from th
 recipes/symdev/0.1.0/build.sh
 install.sh                               # installs the newest symdev from the public bucket
 publish/                                 # the publisher (Rust, on symdev-sdk)
-.github/workflows/                       # build.yml (PRs, no upload), publish.yml (main), symdev.yml
+tools/third_party_notices.py             # THIRD-PARTY-NOTICES.txt of the static symdev
+tests/                                   # install.sh.test, the notices generator's tests
+.github/workflows/                       # build.yml (PRs, no upload), publish.yml (main),
+                                         # symdev.yml, tests.yml
 ```
 
 ## Recipes
@@ -43,6 +46,8 @@ takes the package named by its `<id>` argument and checks all of them.
 ```
 publish private <id> --from <dir> --recipe <recipe.toml> [--dry-run]
 publish public  <id> --from <prefix> --source-code <tar.gz> --recipe <recipe.toml> [--dry-run]
+publish file <path> --to <key> --bucket public|private --content-type <type> \
+             --cache-control <value> [--dry-run]
 ```
 
 `publish` packs the package reproducibly into `<sha256>.tar.gz` in the current directory,
@@ -50,6 +55,12 @@ checks the hash against the recipe, reads the bucket's `index.toml` (none yet = 
 refuses an id that is already there, then uploads the archive (and for `public` the source
 archive) and the index last. `--dry-run` uploads nothing and prints the index it would
 write.
+
+`publish file` puts one file as it is at a fixed key (`install.sh` at the public bucket's
+root), signed like the other uploads, with the two headers given; it neither reads nor
+writes the index. The object is mutable: the next upload replaces it. A key may only hold
+`A-Z a-z 0-9 - . _ ~` and `/`, and may not start with `/`, have an empty, `.` or `..`
+segment, or be `index.toml`. `--dry-run` hashes the file and says what it would upload.
 
 | Variable | For |
 |---|---|
@@ -68,7 +79,8 @@ cargo run --release -p publish -- private 'sdk;s60-3rd-fp2;1.1' \
 ## install.sh
 
 `install.sh` (POSIX `sh`) installs the newest prebuilt symdev from the public bucket, where
-it is meant to be served too (`Cache-Control: no-cache`):
+symdev.yml serves it too, at the root, as `text/plain; charset=utf-8` with
+`Cache-Control: no-cache`:
 
 ```bash
 curl -fsSL https://pub-15670d2771364287b9982e497c29f586.r2.dev/install.sh | sh
@@ -87,6 +99,12 @@ another bucket. `sh tests/install.sh.test [<shell>]` runs it against a local fak
 `publish public … --dry-run`; `publish.yml` (push to `main` under `recipes/gcce/`, or by
 hand) does the same and uploads. `symdev.yml` does both for `recipes/symdev/<ver>/`: it
 builds a static symdev (musl) from the recipe's tag, dry-runs both packages on every run,
-and on `main` (or by hand, with the version) uploads `rust-sdk;<ver>`, then `symdev;<ver>`. Settings: repository variable `PUBLIC_READ_URL` (the
+and on `main` (or by hand, with the version) uploads `rust-sdk;<ver>`, then `symdev;<ver>`,
+then `install.sh`; a manual run with `install_sh_only` uploads only `install.sh`. The symdev
+package holds `bin/symdev` and `share/doc/symdev/{LICENSE,THIRD-PARTY-NOTICES.txt}`, the
+notices of every crate, bundled C library and toolchain runtime the static binary links
+(`tools/third_party_notices.py`; build.sh fails without them). `tests.yml` runs
+`tests/install.sh.test` under dash and bash, the generator's tests and `cargo test` on
+changes to what they cover. Settings: repository variable `PUBLIC_READ_URL` (the
 public bucket's r2.dev URL, read by dry runs); environment `publish` with variable
 `PUBLISH_PUBLIC_URL` and secrets `PUBLISH_ACCESS_KEY_ID`, `PUBLISH_SECRET_ACCESS_KEY`.
