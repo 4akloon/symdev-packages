@@ -18,7 +18,7 @@ recipe format/publish extended for two packages + git source; (2) workflow on
 | recipe + build.sh | todo |
 | workflow | todo |
 | install.sh + test | todo |
-| local musl attempt | running |
+| local musl attempt | done: fails without musl-gcc (libz-sys), see below |
 
 ## Facts
 
@@ -43,6 +43,27 @@ recipe format/publish extended for two packages + git source; (2) workflow on
 
 ## Next step
 
+
+## Local musl attempt (2026-10-02)
+
+- `rustup target add x86_64-unknown-linux-musl --toolchain 1.98.1`: ok (user-level rustup).
+- Scratch copy: `git archive` of toolchain-manager 553fb0f → `~/src/symdev-musl/src`,
+  `CARGO_TARGET_DIR=~/src/symdev-musl/target`.
+- `cargo +1.98.1 build --release --locked -p symdev-cli --target x86_64-unknown-linux-musl`
+  → fails, log `~/src/symdev-musl/build.log`: `error: failed to run custom build command for
+  `libz-sys v1.1.29`` … `error occurred in cc-rs: failed to find tool "x86_64-linux-musl-gcc":
+  No such file or directory (os error 2)`. libz-sys comes from symdev-sis's
+  `flate2 … features = ["zlib"]`; ring 0.17.14 (rustls ← ureq ← symdev-sdk) needs the same
+  compiler (cargo stopped on libz-sys first).
+- cc-rs 1.4.6 looks for `x86_64-linux-musl-gcc`, then `musl-gcc` on PATH
+  (`find_working_gnu_prefix(&["x86_64-linux-musl", "musl"])`), so Ubuntu's `musl-tools`
+  (`/usr/bin/musl-gcc`) is found in CI without a `CC_*` variable.
+- Informational only (NOT a release build): `CC_x86_64_unknown_linux_musl=gcc` (host gcc 15,
+  glibc headers) → builds in 16 s; `file`: `ELF 64-bit LSB pie executable, x86-64 … static-pie
+  linked`, `ldd`: `statically linked`, `readelf -d`: 0 NEEDED, 7 546 896 bytes unstripped;
+  `symdev sdk list` with the built-in source reached r2.dev over TLS (HTTP 404: bucket empty).
+  So the Rust side of the musl build is fine; only a musl C compiler is missing here.
+  build.sh's static check must accept `static-pie linked` as well as `statically linked`.
 
 ---
 
