@@ -112,8 +112,8 @@ fn run(command: Command) -> Result<()> {
         path: shown.clone(),
         source,
     })?;
-    let recipe = Recipe::parse(&text, &shown)?;
-    let publication = Publication::new(visibility, &id, recipe, &from, source_code.as_deref())?;
+    let recipe = Recipe::parse(&text, &shown, &id)?;
+    let publication = Publication::new(visibility, recipe, &from, source_code.as_deref())?;
     let out_dir = std::env::current_dir().map_err(|source| SdkError::Io {
         path: ".".into(),
         source,

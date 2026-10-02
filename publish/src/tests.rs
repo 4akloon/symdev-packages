@@ -2,6 +2,7 @@
 
 mod fake_bucket;
 mod refusals;
+mod two_packages;
 
 use std::fs;
 use std::path::Path;
@@ -52,7 +53,7 @@ fn sdk_recipe(sha256: Option<&str>) -> Recipe {
     if let Some(sha) = sha256 {
         text.push_str(&format!("sha256 = \"{sha}\"\n"));
     }
-    Recipe::parse(&text, "recipes/sdk/s60-3rd-fp2/1.1/recipe.toml").unwrap()
+    Recipe::parse(&text, "recipes/sdk/s60-3rd-fp2/1.1/recipe.toml", SDK).unwrap()
 }
 
 /// The SDK recipe with the SHA-256 that `tree` packs to.
@@ -67,11 +68,11 @@ fn gcce_recipe() -> Recipe {
         "id = \"{GCCE}\"\nlicense = \"GPL-3.0-or-later\"\nhost = \"x86_64-linux\"\n\
          build = \"build.sh\"\n"
     );
-    Recipe::parse(&text, "recipes/gcce/12.1.0/recipe.toml").unwrap()
+    Recipe::parse(&text, "recipes/gcce/12.1.0/recipe.toml", GCCE).unwrap()
 }
 
 fn private(tree: &Path, recipe: Recipe) -> Publication {
-    Publication::new(Visibility::Private, SDK, recipe, tree, None).unwrap()
+    Publication::new(Visibility::Private, recipe, tree, None).unwrap()
 }
 
 /// Runs `p` with a fresh output directory; returns the result, stdout, stderr, and the
@@ -169,7 +170,6 @@ fn a_public_upload_puts_archive_and_source_code_before_the_index() {
     let source_sha = "a58166d1b1149d4131e322f51de4a6722d4f04dc0735f1605c2b9665e7d0bf91";
     let p = Publication::new(
         Visibility::Public,
-        GCCE,
         gcce_recipe(),
         prefix.path(),
         Some(&source_code),

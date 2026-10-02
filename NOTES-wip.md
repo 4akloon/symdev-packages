@@ -1,3 +1,194 @@
+# WIP: §12 prebuilt symdev + rust-sdk — branch `prebuilt`
+
+Brief from the lead (2026-10-02): spec §12 of
+`~/worktrees/symdev/toolchain-manager/docs/superpowers/specs/2026-10-02-toolchain-manager-design.md`,
+packages side. Worktree `~/worktrees/symdev-packages/prebuilt`. Do not touch `recipes/gcce/`
+(branch `gcce-own` changes it). Never push, never merge.
+
+Deliverables: (1) `recipes/symdev/0.1.0/{recipe.toml,build.sh}` → `symdev;0.1.0`
+(x86_64-linux, `bin/symdev`, static musl) + `rust-sdk;0.1.0` (any, symbian-rs tree);
+recipe format/publish extended for two packages + git source; (2) workflow on
+`recipes/symdev/**`; (3) `install.sh` + `tests/install.sh.test`; (4) gates; local musl try.
+
+## Status
+
+| Step | State |
+|---|---|
+| publish: multi-package recipe, git/tag keys | done 1480ce9, 193764c (41+5 tests) |
+| recipe + build.sh | done 36909a5, 193764c (lead: repository layout) |
+| workflow | done 7fa8834 |
+| install.sh + test | done 6e38e76 |
+| local musl attempt | done: fails without musl-gcc (libz-sys), see below |
+
+## Facts
+
+- Receipt (`symdev-sdk/src/receipt.rs`): `toml::to_string` of `{id, sha256, source, url}`,
+  file `.symdev-package.toml`, written last via `.symdev-package.toml.partial` + rename;
+  `SdkHome::install` stages in `$SYMDEV_HOME/.staging/<pid>-<n>` under `$SYMDEV_HOME/.lock`
+  (flock) and **removes all of `.staging`** while holding the lock. `url` = full archive URL.
+  Built-in source name `public`, URL `https://pub-15670d2771364287b9982e497c29f586.r2.dev/`.
+- `ReproducibleTarGz` modes: dirs and files with any x bit → 0755, else 0644.
+- `RustSdk` (symdev-build/src/rust_sdk.rs) reads at build time: `targets/arm-symbian-e32.json`
+  (required by `RustSdk::at`), `crates/<name>` (path deps symbian-core/-std → all crates),
+  `crates/symbian-libcalls/Cargo.toml` (built with `--manifest-path … --profile libcalls`,
+  a profile defined only in the workspace root `Cargo.toml`), `rust-src/overlay{,.toml}`
+  (rust-std projects), `shims/common`, `shims/s60` (`*.cpp`, headers beside them).
+  `TOOLCHAIN_FILE`/`HELLO_MAIN` are `include_str!` (compiled in, not read at run time).
+- symbian-rs: 395 tracked files, all mode 100644, no symlinks; `corpus/` (1.9 MB) holds
+  experiment goldens (`.exe`), read by no build.
+- symdev workspace (toolchain-manager) uses `ring 0.17.14` via rustls/ureq → C/asm under musl.
+- Host: no system gcc; `~/.local/bin/{gcc,cc}` wrap a user-local gcc 15 (`~/.local/native-cc`).
+
+## Decisions
+
+- One recipe, two packages: `[[package]]` tables; `Recipe::parse(text, path, id)` returns
+  the package `id` (checks all), so `Publication::new` lost its id argument.
+- `git`/`tag` are accepted (and ignored) by publish, like `build`/`[[source]]`.
+- No publish change for re-runs: two publish jobs (rust-sdk, then symdev) instead, so
+  "Re-run failed jobs" repeats only the one that failed (publish refuses an existing id).
+- LICENSE added to both packages (MIT notice in every copy) — beyond the brief, easy to drop.
+
+## Next step
+
+Done; open for the lead/owner: the tag v0.1.0; R4 (publish's symdev-sdk git dep) before any
+workflow runs; the musl build in CI is unproven until it runs (locally only with the host gcc
+as CC); uploading install.sh to the bucket root (no-cache) has no step yet; the install test
+is not in CI; notices of third-party crates linked into the binary are not bundled;
+main moved to ac81872 (gcce-own merged): `git merge-tree` of main and this branch is clean, the merged build.yml parses, and main's new GCCE recipe (licence `GPL-3.0-or-later AND MIT`) passes `publish public --dry-run`.
+
+
+## Local musl attempt (2026-10-02)
+
+- `rustup target add x86_64-unknown-linux-musl --toolchain 1.98.1`: ok (user-level rustup).
+- Scratch copy: `git archive` of toolchain-manager 553fb0f → `~/src/symdev-musl/src`,
+  `CARGO_TARGET_DIR=~/src/symdev-musl/target`.
+- `cargo +1.98.1 build --release --locked -p symdev-cli --target x86_64-unknown-linux-musl`
+  → fails, log `~/src/symdev-musl/build.log`: `error: failed to run custom build command for
+  `libz-sys v1.1.29`` … `error occurred in cc-rs: failed to find tool "x86_64-linux-musl-gcc":
+  No such file or directory (os error 2)`. libz-sys comes from symdev-sis's
+  `flate2 … features = ["zlib"]`; ring 0.17.14 (rustls ← ureq ← symdev-sdk) needs the same
+  compiler (cargo stopped on libz-sys first).
+- cc-rs 1.4.6 looks for `x86_64-linux-musl-gcc`, then `musl-gcc` on PATH
+  (`find_working_gnu_prefix(&["x86_64-linux-musl", "musl"])`), so Ubuntu's `musl-tools`
+  (`/usr/bin/musl-gcc`) is found in CI without a `CC_*` variable.
+- Informational only (NOT a release build): `CC_x86_64_unknown_linux_musl=gcc` (host gcc 15,
+  glibc headers) → builds in 16 s; `file`: `ELF 64-bit LSB pie executable, x86-64 … static-pie
+  linked`, `ldd`: `statically linked`, `readelf -d`: 0 NEEDED, 7 546 896 bytes unstripped;
+  `symdev sdk list` with the built-in source reached r2.dev over TLS (HTTP 404: bucket empty).
+  So the Rust side of the musl build is fine; only a musl C compiler is missing here.
+  build.sh's static check must accept `static-pie linked` as well as `statically linked`.
+
+## rust-sdk file selection (measured 2026-10-02, toolchain-manager 553fb0f)
+
+- `symbian-rs/crates/symbian-macros` depends on `symdev-locale = { path =
+  "../../../crates/symdev-locale" }` — a host crate **outside** `symbian-rs/`, which inherits
+  `version/edition/license/repository.workspace = true` from the host root `Cargo.toml`. So
+  the package keeps the repository layout: package root = repo root, Rust SDK root =
+  `<package>/symbian-rs` (symdev side must point `RustSdk` there, not at the package root).
+- `cargo metadata --manifest-path <tree>/symbian-rs/crates/symbian-libcalls/Cargo.toml`
+  (what the libcalls build loads): symbian-rs alone → `failed to load manifest for
+  dependency symdev-locale`; + root Cargo.toml + crates/symdev-locale but no
+  `symbian-rs/examples` → `failed to load manifest for workspace member …/examples/async`
+  (examples are workspace members); with examples → ok. The host root's other members
+  (crates/symdev-core …) are not needed.
+- Tree "Dmin" = `Cargo.toml`, `crates/symdev-locale`, `symbian-rs/{Cargo.toml, Cargo.lock,
+  rust-toolchain.toml, targets, crates, rust-src, shims, examples}`, made **read-only**
+  (`chmod -R a-w`): `symdev new hello --language rust` + `symdev build` (musl symdev from
+  the local attempt, classic SYMDEV_* env, `SYMDEV_RUST_SDK=<tree>/symbian-rs`) → ok, so the
+  build writes nothing into the package (Cargo.lock present and current). Same project
+  against the full checkout at the same path: `hello.elf` identical, `hello.exe` differs
+  only at 0x14–0x17 (header CRC) and 0x24–0x27 (time stamp). `examples/ui` (s60 shim) and
+  `examples/std-hello` (rust-src overlay, own workspace) also build inside a writable copy
+  of Dmin.
+- Left out: `symbian-rs/corpus` (experiment goldens), `symbian-rs/.cargo` (symdev passes the
+  target and build-std itself), `target/` (never in a git archive). Added: `LICENSE` (MIT
+  notice in every copy).
+
+## Recipe + build.sh (2026-10-02)
+
+- `recipes/symdev/0.1.0/recipe.toml`: top `git`/`tag`/`build`, `[[package]]` symdev (no
+  include: all of `<out>/symdev`) and rust-sdk (include list = the selection above + LICENSE).
+- build.sh against the real recipe: `fatal: Remote branch v0.1.0 not found in upstream origin`
+  → `error: cannot clone https://github.com/4akloon/symdev at v0.1.0 (does the tag exist?)`.
+- Local run: scratch bare repo (push of toolchain-manager 553fb0f) + scratch tag v0.1.0,
+  recipe copy with `git = file://…`, `CC_x86_64_unknown_linux_musl=gcc` (informational) →
+  ok; static-pie binary 7 546 912 bytes, source archive 3 018 564 bytes. Guards checked:
+  ids 0.2.0 vs workspace 0.1.0; missing rust-sdk id; a branch named like the tag ("is not a
+  tag"); static check fails on a dynamic binary (both the `file -bL` and the `ldd` branch).
+- `publish public … --dry-run` of both from build.sh's out: rust-sdk 377 613 bytes
+  (325 files), symdev 3 029 988 bytes; both index entries right. Extracted read-only into a
+  fake SYMDEV_HOME: the packed static symdev + `SYMDEV_RUST_SDK=<rust-sdk>/symbian-rs`
+  scaffold and build a Rust hello.
+- No shellcheck on this host (dash and busybox are).
+
+## Workflow (2026-10-02)
+
+- New `.github/workflows/symdev.yml` (build.yml/publish.yml untouched except build.yml's PR
+  filter `recipes/**` → `recipes/gcce/**`, so a symdev recipe PR does not start a GCCE build).
+- Jobs: `build` (ubuntu-24.04 runner — a static binary needs no old glibc; apt musl-tools;
+  rustup 1.98.1 + musl target; choose the recipe dir the change touches (PR base / push
+  before; none → newest; >1 → error; dispatch input validated); build.sh; dry-run both
+  packages against `vars.PUBLIC_READ_URL`; tar of out/ as artifact), `publish-rust-sdk`, then
+  `publish-symdev` (each `environment: publish`, `concurrency: publish`, push/dispatch only).
+  Two jobs so "Re-run failed jobs" after a symdev failure does not stop at rust-sdk's
+  "already published".
+- Checked: YAML parses (python yaml); the choose step run in a mock repo for 7 cases
+  (publisher-only → newest, new 0.2.0, two versions → error, dispatch ok/`../x`/missing,
+  zero `before`). Not runnable until R4 (publish's path dep), noted in the header.
+
+## install.sh (2026-10-02)
+
+- Receipt format confirmed with the real `Receipt::write` (scratch crate on symdev-sdk):
+  `id = "…"`, `sha256 = "…"`, `source = "public"`, `url = "…"`, one per line, trailing `\n`.
+- install.sh: body in `main` (a truncated `curl | sh` runs nothing: checked cut at 4 points,
+  0 files); host from `uname -sm` (only `Linux x86_64`); curl → wget; sha256sum → shasum;
+  index parsed with awk (schema must be 1); highest version by dot-numeric compare,
+  pre-release below release; archive URL checked like symdev's `resolve_url`; size + SHA-256
+  checked; `tar -tzf` entries with `/…` or `..` refused; flock on `$SYMDEV_HOME/.lock` when
+  flock(1) exists; staging `$SYMDEV_HOME/.staging/install-sh-$$` → rename → receipt via
+  `.partial` last; a receipt-less dir is replaced; link replaced only if absent or pointing
+  into `$SYMDEV_HOME/symdev/*/bin/symdev` (else refused); PATH warning.
+- tests/install.sh.test: 39 checks, all pass under dash and bash; a busybox-only PATH (no
+  curl → wget, no flock) and a stdin (`| sh`) run included. Mutations caught: lexical version
+  compare (string `<`), no host filter, no hash check (needed a well-formed wrong archive —
+  an appended byte was caught by tar instead), no installed check, receipt `source`.
+  `SYMDEV_TEST_BINARY=<musl symdev>` → `symdev sdk list` prints `installed  symdev;0.13.0  (public)`.
+- E2E: the build.sh-made symdev;0.1.0 archive served with its dry-run index → install.sh →
+  `symdev sdk list` (the installed static binary) shows `installed  symdev;0.1.0  (public)`.
+- Not done (outside the brief): uploading install.sh to the bucket root (no-cache) — needs a
+  publisher step or workflow upload; running tests/install.sh.test in CI.
+
+## Lead's decision on rust-sdk contents (2026-10-02) and how the recipe meets it
+
+- Lead: keep the REPOSITORY layout (symdev side, tm-rust-sdk, `RustSdkPackage::REQUIRED` =
+  `symbian-rs/targets/arm-symbian-e32.json`, `crates/symdev-locale/Cargo.toml`, `Cargo.toml`;
+  SDK = `<package>/symbian-rs`); pack `Cargo.toml`, `crates/symdev-locale`, `symbian-rs`
+  without `target/` and `corpus/`; examples out unless needed. Reason: symbian-macros depends
+  on `../../../crates/symdev-locale`, which inherits from the root `[workspace.package]`.
+- Examples ARE needed (measured): tree without `symbian-rs/examples`, read-only, `symdev
+  build` of a scaffolded Rust hello → `cargo build --profile libcalls -p symbian-libcalls
+  --manifest-path …/symbian-rs/crates/symbian-libcalls/Cargo.toml … failed (status 101):
+  error: failed to load manifest for workspace member …/symbian-rs/examples/async`.
+- Recipe include = `LICENSE`, `Cargo.toml`, `crates/symdev-locale` and every top-level entry
+  of `symbian-rs` but `corpus` (now including `.cargo`, to be exactly "symbian-rs minus
+  corpus"). publish's include has no exclusions, so symbian-rs's entries are listed; build.sh
+  fails if the tag has a `symbian-rs/<entry>` the list does not name (checked: removing
+  `.cargo` from the list → `error: v0.1.0 has symbian-rs/.cargo, which the rust-sdk include
+  list … does not name; add it`). target/ cannot appear: the tree is a git archive.
+- New test `the_rust_sdk_keeps_the_repository_layout_without_corpus_or_build_output` packs
+  the real recipe against a fake checkout (with corpus, target/, crates/symdev-cli): RED
+  without `.cargo`, GREEN with it.
+- Full §12 flow on toolchain-manager ea55371 (scratch tag): build.sh (informational CC) →
+  `publish --dry-run` of rust-sdk (377 928 bytes) then symdev (3 034 281) into a local bucket
+  → install.sh (dash) installs symdev → with `builtin = false` + a `file://` source, the
+  installed static symdev's `symdev new hello --language rust` auto-installs
+  `rust-sdk;0.1.0 (0.4 MB) from test`; `symdev build` (rust-sdk made read-only) → hello.exe;
+  `symdev sdk list`: `installed rust-sdk;0.1.0 (test)`, `installed symdev;0.1.0 (public)`.
+  (A fake HOME broke only this host's `~/.local/bin/cc` wrapper, which execs
+  `$HOME/.local/native-cc/…`; rerun with the real HOME and SYMDEV_HOME/XDG_* isolated.)
+
+---
+
 # WIP: Track E (publisher) — branch `publish`
 
 Plan: `/home/genius/worktrees/symdev/toolchain-manager/docs/superpowers/plans/2026-10-02-toolchain-manager.md`

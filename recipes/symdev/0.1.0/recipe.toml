@@ -1,0 +1,60 @@
+# symdev;0.1.0 and rust-sdk;0.1.0 — the prebuilt symdev and the Rust SDK it builds Rust
+# projects against, both from the tag v0.1.0 of 4akloon/symdev (symdev spec 2026-10-02 §12).
+# Merging this recipe into main is the release: CI runs build.sh, then publishes rust-sdk
+# first and symdev second, so the index never offers a symdev whose Rust SDK is missing.
+#
+# The tag v0.1.0 does not exist yet (2026-10-02); it is made when symdev 0.1.0 is released.
+# Until then build.sh's clone fails, as it should. build.sh reads `git` and `tag`, and checks
+# that the tag's workspace version is the version in the ids below.
+git = "https://github.com/4akloon/symdev"
+tag = "v0.1.0"
+build = "build.sh"
+
+# bin/symdev, static (x86_64-unknown-linux-musl), so it runs on any x86_64 Linux whatever
+# its glibc; and LICENSE, since MIT asks for the notice in every copy.
+[[package]]
+id = "symdev;0.1.0"
+license = "MIT"
+host = "x86_64-linux"
+
+# Packed from the tag's tree (git archive, so no target/ and nothing untracked), keeping the
+# repository layout, which symdev expects of an installed rust-sdk: the Rust SDK is
+# <package>/symbian-rs, and symbian-macros reads locales files with symdev-locale through
+# `../../../crates/symdev-locale`, which inherits its version and edition from the root
+# Cargo.toml. So: Cargo.toml, crates/symdev-locale, and symbian-rs without corpus/
+# (experiment goldens, read by no build). Measured on 2026-10-02 by building a Rust hello,
+# examples/ui and examples/std-hello against a read-only copy of this list:
+#   symbian-rs/Cargo.toml              [workspace.package] the crates inherit, and the
+#                                      `libcalls` profile symbian-libcalls is built with
+#   symbian-rs/Cargo.lock              that build runs in the SDK workspace; without the lock
+#                                      cargo would resolve and write one into the package
+#   symbian-rs/examples                workspace members: without them `symdev build` of a
+#                                      Rust project fails in that build ("failed to load
+#                                      manifest for workspace member …/examples/async")
+#   symbian-rs/targets                 arm-symbian-e32.json (RustSdk::at requires it)
+#   symbian-rs/crates                  the SDK crates projects depend on by path
+#   symbian-rs/rust-src                the std overlay `language = "rust-std"` projects use
+#   symbian-rs/shims                   the C++ shims compiled into every Rust application
+#   symbian-rs/rust-toolchain.toml,    what cargo reads for a build inside the tree (the
+#   symbian-rs/.cargo                  examples); symdev passes its own flags for a project
+# and LICENSE, since MIT asks for the notice in every copy. A later symdev that adds a
+# directory to symbian-rs needs it added here (publish fails on an entry that matches
+# nothing, not on one that is missing from this list).
+[[package]]
+id = "rust-sdk;0.1.0"
+license = "MIT"
+host = "any"
+include = [
+  "LICENSE",
+  "Cargo.toml",
+  "crates/symdev-locale",
+  "symbian-rs/.cargo",
+  "symbian-rs/Cargo.toml",
+  "symbian-rs/Cargo.lock",
+  "symbian-rs/rust-toolchain.toml",
+  "symbian-rs/targets",
+  "symbian-rs/crates",
+  "symbian-rs/rust-src",
+  "symbian-rs/shims",
+  "symbian-rs/examples",
+]

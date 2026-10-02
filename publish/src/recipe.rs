@@ -1,11 +1,14 @@
 use std::fs;
 use std::path::Path;
 
-use serde::de::IgnoredAny;
 use symdev_sdk::{Host, PackageId, ReproducibleTarGz, Result, SdkError};
 
 use crate::archive::Archive;
 use crate::include::Include;
+
+use self::keys::PackageKeys;
+
+mod keys;
 
 /// A package's `recipe.toml`: what the package is and, for a package packed from a tree
 /// that holds more than it (the SDK), which paths of that tree go into it.
@@ -19,57 +22,67 @@ pub struct Recipe {
     sha256: Option<String>,
 }
 
-/// The file as written. `build` and `[[source]]` belong to the build script and CI.
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RecipeFile {
-    id: PackageId,
-    license: String,
-    host: Host,
-    include: Option<Vec<String>>,
-    sha256: Option<String>,
-    #[serde(rename = "build")]
-    _build: Option<IgnoredAny>,
-    #[serde(rename = "source")]
-    _source: Option<IgnoredAny>,
-}
-
 impl Recipe {
-    /// Parses and checks `text`; `path_for_errors` names the file in every error.
-    pub fn parse(text: &str, path_for_errors: &str) -> Result<Recipe> {
+    /// Parses and checks `text` and returns the package `id` it describes;
+    /// `path_for_errors` names the file in every error. Every package of the file is
+    /// checked, not only `id`.
+    pub fn parse(text: &str, path_for_errors: &str, id: &str) -> Result<Recipe> {
+        let wanted = PackageId::parse(id)?;
         let bad = |detail: String| SdkError::Other(format!("recipe {path_for_errors}: {detail}"));
-        let file: RecipeFile = toml::from_str(text).map_err(|e| bad(e.to_string()))?;
-        if file.license.trim().is_empty() {
-            return Err(bad("`license` is empty".into()));
+        let all = PackageKeys::all_in(text).map_err(|e| bad(e.to_string()))?;
+        let recipes = all
+            .into_iter()
+            .map(|keys| Self::checked(keys, path_for_errors).map_err(bad))
+            .collect::<Result<Vec<_>>>()?;
+        if recipes.is_empty() {
+            return Err(bad(
+                "makes no package; give each package a [[package]] table".into(),
+            ));
         }
-        if let Some(sha) = &file.sha256 {
-            let hex = |c: char| c.is_ascii_digit() || ('a'..='f').contains(&c);
-            if sha.len() != 64 || !sha.chars().all(hex) {
-                return Err(bad(format!(
-                    "sha256 `{sha}` is not 64 lowercase hex digits"
-                )));
+        for (n, recipe) in recipes.iter().enumerate() {
+            if recipes[..n].iter().any(|r| r.id == recipe.id) {
+                return Err(bad(format!("`{}` is listed twice", recipe.id)));
             }
         }
-        let include = match file.include {
+        let ids: Vec<String> = recipes.iter().map(|r| format!("`{}`", r.id)).collect();
+        recipes.into_iter().find(|r| r.id == wanted).ok_or_else(|| {
+            SdkError::Other(format!(
+                "`{wanted}` is not a package of {path_for_errors}, which makes {}; pass one \
+                 of its ids or the right recipe",
+                ids.join(", ")
+            ))
+        })
+    }
+
+    /// One package's keys, checked; the error is the detail without the recipe's path.
+    fn checked(keys: PackageKeys, path: &str) -> std::result::Result<Recipe, String> {
+        if keys.license.trim().is_empty() {
+            return Err(format!("{}: `license` is empty", keys.id));
+        }
+        if let Some(sha) = &keys.sha256 {
+            let hex = |c: char| c.is_ascii_digit() || ('a'..='f').contains(&c);
+            if sha.len() != 64 || !sha.chars().all(hex) {
+                return Err(format!("sha256 `{sha}` is not 64 lowercase hex digits"));
+            }
+        }
+        let include = match keys.include {
             None => None,
             Some(list) if list.is_empty() => {
-                return Err(bad(
-                    "`include` lists nothing; remove it to pack the whole tree".into(),
-                ));
+                return Err("`include` lists nothing; remove it to pack the whole tree".into());
             }
             Some(list) => Some(
                 list.iter()
-                    .map(|p| Include::parse(p).map_err(|e| bad(e.to_string())))
-                    .collect::<Result<Vec<_>>>()?,
+                    .map(|p| Include::parse(p).map_err(|e| e.to_string()))
+                    .collect::<std::result::Result<Vec<_>, _>>()?,
             ),
         };
         Ok(Recipe {
-            path: path_for_errors.to_string(),
-            id: file.id,
-            license: file.license,
-            host: file.host,
+            path: path.to_string(),
+            id: keys.id,
+            license: keys.license,
+            host: keys.host,
             include,
-            sha256: file.sha256,
+            sha256: keys.sha256,
         })
     }
 

@@ -1,6 +1,7 @@
 # Builds the GCCE recipe and packs gcce;12.1.0 the way publish.yml would, uploading nothing
-# to a bucket. Runs on pull requests that touch a recipe or the publisher, and as the first
-# half of publish.yml (workflow_call).
+# to a bucket. Runs on pull requests that touch the GCCE recipe or the publisher, and as the
+# first half of publish.yml (workflow_call). The symdev recipes have their own workflow
+# (symdev.yml).
 #
 # Not runnable yet, on purpose: publish's symdev-sdk dependency is a local path until task R4
 # switches it to a git tag.
@@ -9,7 +10,7 @@ name: build
 on:
   pull_request:
     paths:
-      - "recipes/**"
+      - "recipes/gcce/**"
       - "publish/**"
       - "Cargo.lock"
       - ".github/workflows/build.yml"

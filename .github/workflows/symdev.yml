@@ -1,0 +1,202 @@
+# The prebuilt symdev and its Rust SDK (symdev spec 2026-10-02 §12): recipes/symdev/<ver>/
+# names a tag of 4akloon/symdev; build.sh builds a static x86_64 musl symdev from it and
+# stages the tag's tree. Every run packs both packages with `publish --dry-run` against the
+# public index (an id already published fails here); a push to main (merging the recipe is
+# the release) or a manual run then uploads rust-sdk;<ver> and, after it, symdev;<ver>, so
+# the index never offers a symdev whose Rust SDK is missing.
+#
+# The two uploads are separate jobs on purpose: publish refuses an id already in the index,
+# so if symdev's upload fails after rust-sdk's went through, "Re-run failed jobs" repeats
+# only symdev's.
+#
+# Settings, as for GCCE (publish.yml): repository variable PUBLIC_READ_URL (the public
+# bucket's r2.dev URL, read by the dry run; unset = empty index); environment `publish`
+# (main only) with variable PUBLISH_PUBLIC_URL and secrets PUBLISH_ACCESS_KEY_ID,
+# PUBLISH_SECRET_ACCESS_KEY.
+#
+# Not runnable yet, on purpose: publish's symdev-sdk dependency is a local path until task R4
+# switches it to a git tag (as build.yml and publish.yml).
+name: symdev
+
+on:
+  pull_request:
+    paths:
+      - "recipes/symdev/**"
+      - "publish/**"
+      - "Cargo.lock"
+      - ".github/workflows/symdev.yml"
+  push:
+    branches: [main]
+    paths:
+      - "recipes/symdev/**"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The recipe to build and publish: recipes/symdev/<version>"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    # A static binary does not depend on the runner's glibc, so no container is needed.
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.recipe.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # The recipe directory the change touches; a change to the publisher or this workflow
+      # alone checks the newest recipe. One release per change.
+      - name: Choose the recipe
+        id: recipe
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          versions=
+          if [ "$EVENT" = workflow_dispatch ]; then
+            versions=$INPUT_VERSION
+          elif git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            versions=$(git diff --name-only "$BASE" HEAD -- recipes/symdev/ | cut -d/ -f3 | sort -u)
+          fi
+          if [ -z "$versions" ]; then
+            versions=$(ls recipes/symdev | sort -V | tail -n 1)
+          fi
+          if [ "$(printf '%s\n' "$versions" | wc -l)" -ne 1 ]; then
+            echo "::error::this change touches several symdev recipes ($(echo $versions)); release one per change"
+            exit 1
+          fi
+          case $versions in
+            *[!0-9A-Za-z.+-]* | "") echo "::error::'$versions' is not a version"; exit 1 ;;
+          esac
+          if [ ! -f "recipes/symdev/$versions/recipe.toml" ]; then
+            echo "::error::recipes/symdev/$versions/recipe.toml does not exist"
+            exit 1
+          fi
+          echo "version=$versions" >> "$GITHUB_OUTPUT"
+
+      # musl-gcc: ring and libz-sys compile C for the musl target (cc-rs finds musl-gcc).
+      - name: Install musl-tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+
+      # Pinned like symdev's CI (workspace rust-version); bump both together.
+      - name: Install Rust 1.98.1 with the musl target
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --target x86_64-unknown-linux-musl
+          rustup default 1.98.1
+
+      - name: Build symdev and stage the Rust SDK
+        env:
+          VERSION: ${{ steps.recipe.outputs.version }}
+        run: |
+          mkdir "$RUNNER_TEMP/work"
+          cd "$RUNNER_TEMP/work"
+          bash "$GITHUB_WORKSPACE/recipes/symdev/$VERSION/build.sh" "$RUNNER_TEMP/out"
+
+      - name: Pack both packages (dry run)
+        env:
+          VERSION: ${{ steps.recipe.outputs.version }}
+          PUBLISH_PUBLIC_URL: ${{ vars.PUBLIC_READ_URL }}
+        run: |
+          for kind in rust-sdk symdev; do
+            cargo run --release --locked -p publish -- public "$kind;$VERSION" \
+              --from "$RUNNER_TEMP/out/$kind" \
+              --source-code "$RUNNER_TEMP/out/symdev-$VERSION-source.tar.gz" \
+              --recipe "recipes/symdev/$VERSION/recipe.toml" --dry-run
+          done
+
+      # An artifact does not keep file modes; a tar does (bin/symdev stays executable).
+      - name: Hand the build to the publish jobs
+        run: tar -C "$RUNNER_TEMP" -cf symdev-out.tar out
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: symdev-build
+          path: |
+            symdev-out.tar
+            *.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-rust-sdk:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: publish
+    # The index is read, extended and written back: one publish at a time.
+    concurrency:
+      group: publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: symdev-build
+          path: ${{ runner.temp }}/symdev-build
+
+      - name: Unpack the build
+        run: tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/symdev-build/symdev-out.tar"
+
+      - name: Install Rust 1.98.1
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
+
+      - name: Publish rust-sdk
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          PUBLISH_PUBLIC_URL: ${{ vars.PUBLISH_PUBLIC_URL }}
+          PUBLISH_ACCESS_KEY_ID: ${{ secrets.PUBLISH_ACCESS_KEY_ID }}
+          PUBLISH_SECRET_ACCESS_KEY: ${{ secrets.PUBLISH_SECRET_ACCESS_KEY }}
+        run: |
+          cargo run --release --locked -p publish -- public "rust-sdk;$VERSION" \
+            --from "$RUNNER_TEMP/out/rust-sdk" \
+            --source-code "$RUNNER_TEMP/out/symdev-$VERSION-source.tar.gz" \
+            --recipe "recipes/symdev/$VERSION/recipe.toml"
+
+  publish-symdev:
+    if: github.event_name != 'pull_request'
+    needs: [build, publish-rust-sdk]
+    runs-on: ubuntu-24.04
+    environment: publish
+    concurrency:
+      group: publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: symdev-build
+          path: ${{ runner.temp }}/symdev-build
+
+      - name: Unpack the build
+        run: tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/symdev-build/symdev-out.tar"
+
+      - name: Install Rust 1.98.1
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
+
+      - name: Publish symdev
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          PUBLISH_PUBLIC_URL: ${{ vars.PUBLISH_PUBLIC_URL }}
+          PUBLISH_ACCESS_KEY_ID: ${{ secrets.PUBLISH_ACCESS_KEY_ID }}
+          PUBLISH_SECRET_ACCESS_KEY: ${{ secrets.PUBLISH_SECRET_ACCESS_KEY }}
+        run: |
+          cargo run --release --locked -p publish -- public "symdev;$VERSION" \
+            --from "$RUNNER_TEMP/out/symdev" \
+            --source-code "$RUNNER_TEMP/out/symdev-$VERSION-source.tar.gz" \
+            --recipe "recipes/symdev/$VERSION/recipe.toml"

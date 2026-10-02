@@ -152,3 +152,42 @@ fn an_upload_without_the_bucket_url_fails_before_packing() {
     );
     assert!(archives(&root.join("out")).is_empty());
 }
+
+#[test]
+fn a_recipe_that_makes_two_packages_publishes_the_one_named() {
+    let ws = workspace(
+        "git = \"https://github.com/4akloon/symdev\"\ntag = \"v0.1.0\"\nbuild = \"build.sh\"\n\n\
+         [[package]]\nid = \"symdev;0.1.0\"\nlicense = \"MIT\"\nhost = \"x86_64-linux\"\n\n\
+         [[package]]\nid = \"rust-sdk;0.1.0\"\nlicense = \"MIT\"\nhost = \"any\"\n",
+    );
+    let root = ws.path();
+    let (from, recipe) = (root.join("tree"), root.join("recipe.toml"));
+    let source = root.join("src.tar.gz");
+    let dry_run = |id: &str| {
+        let args = [
+            "public",
+            id,
+            "--from",
+            from.to_str().unwrap(),
+            "--source-code",
+            source.to_str().unwrap(),
+            "--recipe",
+            recipe.to_str().unwrap(),
+            "--dry-run",
+        ];
+        publish(&root.join("out"), &args)
+    };
+    let output = dry_run("rust-sdk;0.1.0");
+    assert!(output.status.success(), "{}", text(&output.stderr));
+    let index = text(&output.stdout);
+    assert!(index.contains("id = \"rust-sdk;0.1.0\""), "{index}");
+    assert!(index.contains("host = \"any\""), "{index}");
+    assert!(!index.contains("symdev;0.1.0"), "{index}");
+    let output = dry_run("symdev;0.2.0");
+    assert!(!output.status.success());
+    let stderr = text(&output.stderr);
+    assert!(
+        stderr.contains("`symdev;0.1.0`, `rust-sdk;0.1.0`"),
+        "{stderr}"
+    );
+}
