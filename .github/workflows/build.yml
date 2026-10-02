@@ -20,22 +20,28 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # GCC and binutils are built on Debian 11 (glibc 2.31), so the package runs on
-  # Ubuntu 20.04+ / Debian 11+ (spec §6). Only the build runs in the container.
+  # GCC and binutils are built on AlmaLinux 8 (glibc 2.28, supported until 2029), so the
+  # package runs on any Linux with glibc 2.28 or newer: RHEL/Alma/Rocky 8+, Debian 10+,
+  # Ubuntu 18.10+. Debian 11 was the first choice (spec §6), but its LTS ended on
+  # 2026-08-31 and its security pool already answers 404 (run 37052194350). Only the
+  # build runs in the container.
   gcce:
     runs-on: ubuntu-24.04
-    container: debian:11
+    container: almalinux:8
     steps:
-      - uses: actions/checkout@v7
-
+      # Before checkout, so it has git and tar. The list is experiment 107's (derived from the
+      # owner's host build) in EL 8 names: gcc/gcc-c++/make for build-essential, binutils for
+      # the native ar that in-tree mpfr's LTO check needs, perl-podlators for pod2man.
+      # libzstd-devel must stay out: it would give GCC zstd LTO compression, which the
+      # reference toolchain does not have.
       - name: Install the build dependencies
-        # Derived in symdev experiment 107 from what the build used on the owner's host; not
-        # yet observed in this container. libzstd-dev must stay out: it would give GCC zstd LTO
-        # compression, which the reference toolchain does not have.
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            build-essential m4 gawk xz-utils bzip2 curl ca-certificates
+          dnf install -y --setopt=install_weak_deps=False \
+            gcc gcc-c++ make binutils m4 gawk xz bzip2 curl ca-certificates \
+            perl-podlators tar gzip git diffutils findutils file
+          ! rpm -q libzstd-devel
+
+      - uses: actions/checkout@v7
 
       - name: Build GCCE into /opt/gcce
         run: |

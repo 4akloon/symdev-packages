@@ -95,7 +95,7 @@ another bucket. `sh tests/install.sh.test [<shell>]` runs it against a local fak
 
 ## CI
 
-`build.yml` (pull requests) builds GCCE in a Debian 11 container and packs it with
+`build.yml` (pull requests) builds GCCE in an AlmaLinux 8 container and packs it with
 `publish public … --dry-run`; `publish.yml` (push to `main` under `recipes/gcce/`, or by
 hand) does the same and uploads. `symdev.yml` does both for `recipes/symdev/<ver>/`: it
 builds a static symdev (musl) from the recipe's tag, dry-runs both packages on every run,
