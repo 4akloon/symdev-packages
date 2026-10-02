@@ -2,10 +2,8 @@
 # to a bucket. Runs on pull requests that touch a recipe or the publisher, and as the first
 # half of publish.yml (workflow_call).
 #
-# Not runnable yet, on purpose:
-# - the Debian 11 build-dependency list is not recorded (symdev experiment 107, Track C);
-#   the install step fails with a TODO instead of a guessed package list;
-# - publish's symdev-sdk dependency is a local path until task R4 switches it to a git tag.
+# Not runnable yet, on purpose: publish's symdev-sdk dependency is a local path until task R4
+# switches it to a git tag.
 name: build
 
 on:
@@ -33,10 +31,13 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install the build dependencies
-        # TODO: the Debian 11 apt list recorded in symdev experiment 107 (not observed yet).
+        # Derived in symdev experiment 107 from what the build used on the owner's host; not
+        # yet observed in this container. libzstd-dev must stay out: it would give GCC zstd LTO
+        # compression, which the reference toolchain does not have.
         run: |
-          echo "TODO: the Debian 11 build-dependency list (symdev experiment 107) is not recorded yet" >&2
-          exit 1
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential m4 gawk xz-utils bzip2 curl ca-certificates
 
       - name: Build GCCE into /opt/gcce
         run: |
