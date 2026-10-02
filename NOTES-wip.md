@@ -15,7 +15,7 @@ recipe format/publish extended for two packages + git source; (2) workflow on
 | Step | State |
 |---|---|
 | publish: multi-package recipe, git/tag keys | done 1480ce9 (40+5 tests) |
-| recipe + build.sh | todo |
+| recipe + build.sh | done |
 | workflow | todo |
 | install.sh + test | todo |
 | local musl attempt | done: fails without musl-gcc (libz-sys), see below |
@@ -90,6 +90,23 @@ recipe format/publish extended for two packages + git source; (2) workflow on
 - Left out: `symbian-rs/corpus` (experiment goldens), `symbian-rs/.cargo` (symdev passes the
   target and build-std itself), `target/` (never in a git archive). Added: `LICENSE` (MIT
   notice in every copy).
+
+## Recipe + build.sh (2026-10-02)
+
+- `recipes/symdev/0.1.0/recipe.toml`: top `git`/`tag`/`build`, `[[package]]` symdev (no
+  include: all of `<out>/symdev`) and rust-sdk (include list = the selection above + LICENSE).
+- build.sh against the real recipe: `fatal: Remote branch v0.1.0 not found in upstream origin`
+  → `error: cannot clone https://github.com/4akloon/symdev at v0.1.0 (does the tag exist?)`.
+- Local run: scratch bare repo (push of toolchain-manager 553fb0f) + scratch tag v0.1.0,
+  recipe copy with `git = file://…`, `CC_x86_64_unknown_linux_musl=gcc` (informational) →
+  ok; static-pie binary 7 546 912 bytes, source archive 3 018 564 bytes. Guards checked:
+  ids 0.2.0 vs workspace 0.1.0; missing rust-sdk id; a branch named like the tag ("is not a
+  tag"); static check fails on a dynamic binary (both the `file -bL` and the `ldd` branch).
+- `publish public … --dry-run` of both from build.sh's out: rust-sdk 377 613 bytes
+  (325 files), symdev 3 029 988 bytes; both index entries right. Extracted read-only into a
+  fake SYMDEV_HOME: the packed static symdev + `SYMDEV_RUST_SDK=<rust-sdk>/symbian-rs`
+  scaffold and build a Rust hello.
+- No shellcheck on this host (dash and busybox are).
 
 ---
 
