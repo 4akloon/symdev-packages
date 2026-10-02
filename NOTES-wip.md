@@ -14,10 +14,10 @@ recipe format/publish extended for two packages + git source; (2) workflow on
 
 | Step | State |
 |---|---|
-| publish: multi-package recipe, git/tag keys | done 1480ce9 (40+5 tests) |
-| recipe + build.sh | done |
-| workflow | done |
-| install.sh + test | done |
+| publish: multi-package recipe, git/tag keys | done 1480ce9, 193764c (41+5 tests) |
+| recipe + build.sh | done 36909a5, 193764c (lead: repository layout) |
+| workflow | done 7fa8834 |
+| install.sh + test | done 6e38e76 |
 | local musl attempt | done: fails without musl-gcc (libz-sys), see below |
 
 ## Facts
@@ -41,7 +41,20 @@ recipe format/publish extended for two packages + git source; (2) workflow on
 
 ## Decisions
 
+- One recipe, two packages: `[[package]]` tables; `Recipe::parse(text, path, id)` returns
+  the package `id` (checks all), so `Publication::new` lost its id argument.
+- `git`/`tag` are accepted (and ignored) by publish, like `build`/`[[source]]`.
+- No publish change for re-runs: two publish jobs (rust-sdk, then symdev) instead, so
+  "Re-run failed jobs" repeats only the one that failed (publish refuses an existing id).
+- LICENSE added to both packages (MIT notice in every copy) — beyond the brief, easy to drop.
+
 ## Next step
+
+Done; open for the lead/owner: the tag v0.1.0; R4 (publish's symdev-sdk git dep) before any
+workflow runs; the musl build in CI is unproven until it runs (locally only with the host gcc
+as CC); uploading install.sh to the bucket root (no-cache) has no step yet; the install test
+is not in CI; notices of third-party crates linked into the binary are not bundled;
+build.yml's PR filter edit may need a trivial merge with gcce-own.
 
 
 ## Local musl attempt (2026-10-02)
