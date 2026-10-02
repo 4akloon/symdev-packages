@@ -1,0 +1,250 @@
+#!/bin/sh
+# install.sh against a fake public bucket: python3 -m http.server on 127.0.0.1, holding
+# packages and an index.toml written by `publish public … --dry-run`, so the index has the
+# exact format the publisher writes.
+#
+#   sh tests/install.sh.test [<shell>]
+#
+# <shell> runs install.sh (default: dash if installed, else sh). With busybox installed the
+# script also runs in a PATH of busybox applets only (no curl, so wget; no flock).
+# SYMDEV_TEST_BINARY=<a real symdev binary> adds a package holding it and checks that
+# `symdev sdk list` shows the receipt install.sh wrote.
+set -eu
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+install_sh=$root/install.sh
+shell=${1:-$(command -v dash || command -v sh)}
+tmp=$(mktemp -d)
+server=
+cleanup() {
+  if [ -n "$server" ]; then kill "$server" 2>/dev/null || true; fi
+  chmod -R u+w "$tmp" 2>/dev/null || true
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+failures=0
+pass() { echo "ok - $1"; }
+fail() {
+  echo "not ok - $1"
+  failures=$((failures + 1))
+}
+# check <name> <command…>: one test line.
+check() {
+  name=$1
+  shift
+  if "$@"; then pass "$name"; else fail "$name"; fi
+}
+contains() { grep -q -F -e "$2" "$1"; }
+
+# --- the bucket ------------------------------------------------------------------------
+cargo build --quiet --locked --manifest-path "$root/Cargo.toml" -p publish
+publish_bin=$(cargo metadata --format-version 1 --no-deps --manifest-path "$root/Cargo.toml" |
+  python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')/debug/publish
+port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+url=http://127.0.0.1:$port/
+bucket=$tmp/bucket
+mkdir -p "$bucket" "$tmp/pack" "$tmp/trees"
+python3 -m http.server "$port" --bind 127.0.0.1 --directory "$bucket" >"$tmp/http.log" 2>&1 &
+server=$!
+i=0
+until curl -s -o /dev/null "$url"; do
+  i=$((i + 1))
+  [ "$i" -lt 100 ] || { echo "the fake bucket did not start" >&2; exit 1; }
+  sleep 0.1
+done
+printf 'source' >"$tmp/source.tar.gz"
+
+# tree <version>: a package tree whose bin/symdev prints `symdev stub <version>`.
+tree() {
+  mkdir -p "$tmp/trees/$1/bin"
+  printf '#!/bin/sh\necho "symdev stub %s"\n' "$1" >"$tmp/trees/$1/bin/symdev"
+  chmod 755 "$tmp/trees/$1/bin/symdev"
+  echo "$tmp/trees/$1"
+}
+
+# add <id> <host> <tree> [fresh]: packs <tree> as <id> and adds it to the bucket's index
+# (to an empty index with `fresh`), as `publish public` would upload it.
+add() {
+  printf 'id = "%s"\nlicense = "MIT"\nhost = "%s"\n' "$1" "$2" >"$tmp/recipe.toml"
+  rm -f "$tmp/pack/"*.tar.gz
+  read_url=$url
+  [ "${4:-}" != fresh ] || read_url=
+  (cd "$tmp/pack" && env -u PUBLISH_PRIVATE_URL -u PUBLISH_ACCESS_KEY_ID \
+    -u PUBLISH_SECRET_ACCESS_KEY PUBLISH_PUBLIC_URL="$read_url" \
+    "$publish_bin" public "$1" --from "$3" --source-code "$tmp/source.tar.gz" \
+    --recipe "$tmp/recipe.toml" --dry-run >"$tmp/index.new" 2>"$tmp/publish.err") ||
+    { cat "$tmp/publish.err" >&2; exit 1; }
+  sha=$(basename "$tmp/pack/"*.tar.gz .tar.gz)
+  dir=$bucket/$(echo "$1" | tr ';' '/')
+  mkdir -p "$dir"
+  mv "$tmp/pack/$sha.tar.gz" "$dir/"
+  mv "$tmp/index.new" "$bucket/index.toml"
+}
+
+# archive <id>: the bucket path of <id>'s archive.
+archive() { ls "$bucket/$(echo "$1" | tr ';' '/')/"*.tar.gz; }
+
+# install <home> [VAR=value…]: runs install.sh in a clean environment.
+install() {
+  home=$1
+  shift
+  env -i HOME="$home" PATH=/usr/bin:/bin SYMDEV_INSTALL_URL="$url" "$@" \
+    "$shell" "$install_sh" >"$tmp/out" 2>"$tmp/err"
+}
+show() { sed 's/^/    /' "$tmp/out" "$tmp/err"; }
+gets() { grep -c "\"GET /$1" "$tmp/http.log" || true; }
+
+add 'symdev;0.2.0' x86_64-linux "$(tree 0.2.0)"
+add 'symdev;0.10.0' x86_64-linux "$(tree 0.10.0)"
+add 'symdev;0.9.1' x86_64-linux "$(tree 0.9.1)"
+add 'symdev;0.11.0' any "$(tree 0.11.0)"
+add 'rust-sdk;0.12.0' any "$(tree rust-sdk)"
+cp "$bucket/index.toml" "$tmp/index.good"
+
+# --- a fresh install takes the highest version with an archive for this host -----------
+h=$tmp/home1
+mkdir -p "$h"
+if install "$h"; then pass "a fresh install succeeds"; else fail "a fresh install succeeds"; show; fi
+pkg=$h/.local/share/symdev/symdev/0.10.0
+check "0.10.0 wins over 0.9.1 and 0.2.0; 0.11.0 has no x86_64-linux archive" \
+  test -x "$pkg/bin/symdev"
+check "~/.local/bin/symdev is a link to it" \
+  test "$(readlink "$h/.local/bin/symdev")" = "$pkg/bin/symdev"
+check "the link runs it" test "$("$h/.local/bin/symdev")" = "symdev stub 0.10.0"
+a=$(archive 'symdev;0.10.0')
+printf 'id = "symdev;0.10.0"\nsha256 = "%s"\nsource = "public"\nurl = "%s"\n' \
+  "$(basename "$a" .tar.gz)" "${url}symdev/0.10.0/$(basename "$a")" >"$tmp/receipt"
+check "the receipt is the one symdev's SdkHome writes" cmp -s "$tmp/receipt" "$pkg/.symdev-package.toml"
+check "nothing is left in staging" test -z "$(ls -A "$h/.local/share/symdev/.staging" 2>/dev/null)"
+check "a PATH without ~/.local/bin gets a warning" contains "$tmp/err" "$h/.local/bin is not on your PATH"
+
+# --- a second run with nothing new is a no-op ------------------------------------------
+stamp() { ls -lid --full-time "$pkg" "$pkg/bin/symdev" "$pkg/.symdev-package.toml" "$h/.local/bin/symdev" 2>&1 || true; }
+before=$(stamp)
+downloads=$(gets symdev/)
+if install "$h" PATH="$h/.local/bin:/usr/bin:/bin"; then pass "a re-run succeeds"; else fail "a re-run succeeds"; show; fi
+check "a re-run downloads only the index" test "$(gets symdev/)" = "$downloads"
+check "a re-run changes nothing on disk" test "$(stamp)" = "$before"
+check "a re-run says it is installed" contains "$tmp/out" "symdev 0.10.0 is already installed"
+check "~/.local/bin on PATH: no warning" test ! -s "$tmp/err"
+
+# --- a newer version: re-running updates, the old one stays ----------------------------
+add 'symdev;0.12.0' x86_64-linux "$(tree 0.12.0)"
+cp "$bucket/index.toml" "$tmp/index.good"
+if install "$h"; then pass "a re-run with a newer version succeeds"; else fail "a re-run with a newer version succeeds"; show; fi
+check "the link moves to 0.12.0" test "$("$h/.local/bin/symdev")" = "symdev stub 0.12.0"
+check "0.10.0 stays installed" test -f "$pkg/.symdev-package.toml"
+
+# --- read from a pipe, as in `curl -fsSL …/install.sh | sh` ----------------------------
+h=$tmp/home11
+mkdir -p "$h"
+if env -i HOME="$h" PATH=/usr/bin:/bin SYMDEV_INSTALL_URL="$url" "$shell" <"$install_sh" \
+  >"$tmp/out" 2>"$tmp/err"; then
+  pass "install.sh read from stdin installs"
+else
+  fail "install.sh read from stdin installs"
+  show
+fi
+check "stdin: the link runs 0.12.0" test "$("$h/.local/bin/symdev")" = "symdev stub 0.12.0"
+
+# --- SYMDEV_HOME and XDG_DATA_HOME choose the package home -----------------------------
+h=$tmp/home2
+mkdir -p "$h"
+install "$h" SYMDEV_HOME="$tmp/custom" || show
+check "SYMDEV_HOME is the package home" test -f "$tmp/custom/symdev/0.12.0/.symdev-package.toml"
+check "the link points into SYMDEV_HOME" \
+  test "$(readlink "$h/.local/bin/symdev")" = "$tmp/custom/symdev/0.12.0/bin/symdev"
+h=$tmp/home3
+mkdir -p "$h"
+install "$h" XDG_DATA_HOME="$tmp/xdg" || show
+check "without SYMDEV_HOME it is XDG_DATA_HOME/symdev" \
+  test -f "$tmp/xdg/symdev/symdev/0.12.0/.symdev-package.toml"
+
+# --- an archive that is not the one the index names is refused, nothing is installed ---
+# (a well-formed package, 0.10.0's, so only the hash can tell)
+a=$(archive 'symdev;0.12.0')
+cp "$a" "$tmp/good.tar.gz"
+cp "$(archive 'symdev;0.10.0')" "$a"
+h=$tmp/home4
+mkdir -p "$h"
+if install "$h"; then fail "a SHA-256 mismatch fails"; show; else pass "a SHA-256 mismatch fails"; fi
+check "the error names the expected hash" contains "$tmp/err" "$(basename "$a" .tar.gz)"
+check "the error says SHA-256" contains "$tmp/err" "SHA-256"
+check "a mismatch installs nothing" test ! -e "$h/.local/share/symdev/symdev/0.12.0"
+check "a mismatch links nothing" test ! -e "$h/.local/bin/symdev"
+check "a mismatch leaves no staging" test -z "$(ls -A "$h/.local/share/symdev/.staging" 2>/dev/null)"
+cp "$tmp/good.tar.gz" "$a"
+
+# --- no symdev for this host -----------------------------------------------------------
+add 'symdev;0.11.0' any "$tmp/trees/0.11.0" fresh
+h=$tmp/home5
+mkdir -p "$h"
+if install "$h"; then fail "an index without an x86_64-linux symdev fails"; show; else pass "an index without an x86_64-linux symdev fails"; fi
+check "the error names the host and the index" contains "$tmp/err" "no symdev for x86_64-linux in ${url}index.toml"
+check "nothing is installed" test ! -e "$h/.local"
+cp "$tmp/index.good" "$bucket/index.toml"
+
+# --- another host ----------------------------------------------------------------------
+mkdir -p "$tmp/darwin"
+printf '#!/bin/sh\necho "Darwin arm64"\n' >"$tmp/darwin/uname"
+chmod 755 "$tmp/darwin/uname"
+h=$tmp/home6
+mkdir -p "$h"
+if install "$h" PATH="$tmp/darwin:/usr/bin:/bin"; then fail "another host fails"; show; else pass "another host fails"; fi
+check "the error names this host and the one supported" contains "$tmp/err" "only for x86_64 Linux, and this is Darwin arm64"
+check "another host installs nothing" test ! -e "$h/.local"
+
+# --- a file of the user's own at ~/.local/bin/symdev is left alone ---------------------
+h=$tmp/home7
+mkdir -p "$h/.local/bin"
+printf 'mine\n' >"$h/.local/bin/symdev"
+if install "$h"; then fail "a foreign ~/.local/bin/symdev fails"; show; else pass "a foreign ~/.local/bin/symdev fails"; fi
+check "the error names the file" contains "$tmp/err" "$h/.local/bin/symdev exists and is not a link"
+check "the file is unchanged" test "$(cat "$h/.local/bin/symdev")" = mine
+
+# --- an index of a schema this script does not know ------------------------------------
+sed 's/^schema = 1$/schema = 2/' "$tmp/index.good" >"$bucket/index.toml"
+h=$tmp/home8
+mkdir -p "$h"
+if install "$h"; then fail "an unknown schema fails"; show; else pass "an unknown schema fails"; fi
+check "the error names the schema" contains "$tmp/err" "schema 2"
+cp "$tmp/index.good" "$bucket/index.toml"
+
+# --- busybox only: wget instead of curl, no flock --------------------------------------
+if command -v busybox >/dev/null 2>&1; then
+  mkdir -p "$tmp/busybox"
+  for applet in $(busybox --list); do ln -s "$(command -v busybox)" "$tmp/busybox/$applet"; done
+  h=$tmp/home9
+  mkdir -p "$h"
+  if env -i HOME="$h" PATH="$tmp/busybox" SYMDEV_INSTALL_URL="$url" \
+    "$tmp/busybox/sh" "$install_sh" >"$tmp/out" 2>"$tmp/err"; then
+    pass "busybox sh with wget installs"
+  else
+    fail "busybox sh with wget installs"
+    show
+  fi
+  check "busybox: the link runs 0.12.0" test "$("$h/.local/bin/symdev")" = "symdev stub 0.12.0"
+else
+  echo "ok - busybox sh with wget installs # SKIP no busybox"
+fi
+
+# --- optional: the real symdev reads the receipt ---------------------------------------
+if [ -n "${SYMDEV_TEST_BINARY:-}" ]; then
+  mkdir -p "$tmp/trees/real/bin"
+  cp "$SYMDEV_TEST_BINARY" "$tmp/trees/real/bin/symdev"
+  add 'symdev;0.13.0' x86_64-linux "$tmp/trees/real"
+  h=$tmp/home10
+  mkdir -p "$h/.config/symdev"
+  printf 'builtin = false\n' >"$h/.config/symdev/sources.toml"
+  install "$h" || show
+  env -i HOME="$h" PATH=/usr/bin:/bin "$h/.local/bin/symdev" sdk list >"$tmp/out" 2>"$tmp/err" || show
+  check "symdev sdk list shows the package install.sh installed" contains "$tmp/out" "symdev;0.13.0"
+fi
+
+if [ "$failures" -ne 0 ]; then
+  echo "$failures failed"
+  exit 1
+fi
+echo "all passed ($shell)"

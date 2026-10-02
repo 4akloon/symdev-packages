@@ -17,7 +17,7 @@ recipe format/publish extended for two packages + git source; (2) workflow on
 | publish: multi-package recipe, git/tag keys | done 1480ce9 (40+5 tests) |
 | recipe + build.sh | done |
 | workflow | done |
-| install.sh + test | todo |
+| install.sh + test | done |
 | local musl attempt | done: fails without musl-gcc (libz-sys), see below |
 
 ## Facts
@@ -122,6 +122,28 @@ recipe format/publish extended for two packages + git source; (2) workflow on
 - Checked: YAML parses (python yaml); the choose step run in a mock repo for 7 cases
   (publisher-only → newest, new 0.2.0, two versions → error, dispatch ok/`../x`/missing,
   zero `before`). Not runnable until R4 (publish's path dep), noted in the header.
+
+## install.sh (2026-10-02)
+
+- Receipt format confirmed with the real `Receipt::write` (scratch crate on symdev-sdk):
+  `id = "…"`, `sha256 = "…"`, `source = "public"`, `url = "…"`, one per line, trailing `\n`.
+- install.sh: body in `main` (a truncated `curl | sh` runs nothing: checked cut at 4 points,
+  0 files); host from `uname -sm` (only `Linux x86_64`); curl → wget; sha256sum → shasum;
+  index parsed with awk (schema must be 1); highest version by dot-numeric compare,
+  pre-release below release; archive URL checked like symdev's `resolve_url`; size + SHA-256
+  checked; `tar -tzf` entries with `/…` or `..` refused; flock on `$SYMDEV_HOME/.lock` when
+  flock(1) exists; staging `$SYMDEV_HOME/.staging/install-sh-$$` → rename → receipt via
+  `.partial` last; a receipt-less dir is replaced; link replaced only if absent or pointing
+  into `$SYMDEV_HOME/symdev/*/bin/symdev` (else refused); PATH warning.
+- tests/install.sh.test: 39 checks, all pass under dash and bash; a busybox-only PATH (no
+  curl → wget, no flock) and a stdin (`| sh`) run included. Mutations caught: lexical version
+  compare (string `<`), no host filter, no hash check (needed a well-formed wrong archive —
+  an appended byte was caught by tar instead), no installed check, receipt `source`.
+  `SYMDEV_TEST_BINARY=<musl symdev>` → `symdev sdk list` prints `installed  symdev;0.13.0  (public)`.
+- E2E: the build.sh-made symdev;0.1.0 archive served with its dry-run index → install.sh →
+  `symdev sdk list` (the installed static binary) shows `installed  symdev;0.1.0  (public)`.
+- Not done (outside the brief): uploading install.sh to the bucket root (no-cache) — needs a
+  publisher step or workflow upload; running tests/install.sh.test in CI.
 
 ---
 

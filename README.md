@@ -65,6 +65,22 @@ cargo run --release -p publish -- private 'sdk;s60-3rd-fp2;1.1' \
   --from ~/sdk/S60_3rd_FP2 --recipe recipes/sdk/s60-3rd-fp2/1.1/recipe.toml
 ```
 
+## install.sh
+
+`install.sh` (POSIX `sh`) installs the newest prebuilt symdev from the public bucket, where
+it is meant to be served too (`Cache-Control: no-cache`):
+
+```bash
+curl -fsSL https://pub-15670d2771364287b9982e497c29f586.r2.dev/install.sh | sh
+```
+
+It takes the highest `symdev;<ver>` with an `x86_64-linux` archive in `index.toml`, checks
+its SHA-256 and size, extracts it into `$SYMDEV_HOME/symdev/<ver>/` (default
+`~/.local/share/symdev`) with the receipt symdev writes (`symdev sdk list` shows it) and
+links `~/.local/bin/symdev`. Re-running it updates; `SYMDEV_INSTALL_URL` points it at
+another bucket. `sh tests/install.sh.test [<shell>]` runs it against a local fake bucket
+(python3's `http.server`, index and archives made by `publish --dry-run`).
+
 ## CI
 
 `build.yml` (pull requests) builds GCCE in a Debian 11 container and packs it with
