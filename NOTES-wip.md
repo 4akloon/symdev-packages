@@ -14,7 +14,7 @@ recipe format/publish extended for two packages + git source; (2) workflow on
 
 | Step | State |
 |---|---|
-| publish: multi-package recipe, git/tag keys | in progress |
+| publish: multi-package recipe, git/tag keys | done 1480ce9 (40+5 tests) |
 | recipe + build.sh | todo |
 | workflow | todo |
 | install.sh + test | todo |
@@ -64,6 +64,32 @@ recipe format/publish extended for two packages + git source; (2) workflow on
   `symdev sdk list` with the built-in source reached r2.dev over TLS (HTTP 404: bucket empty).
   So the Rust side of the musl build is fine; only a musl C compiler is missing here.
   build.sh's static check must accept `static-pie linked` as well as `statically linked`.
+
+## rust-sdk file selection (measured 2026-10-02, toolchain-manager 553fb0f)
+
+- `symbian-rs/crates/symbian-macros` depends on `symdev-locale = { path =
+  "../../../crates/symdev-locale" }` — a host crate **outside** `symbian-rs/`, which inherits
+  `version/edition/license/repository.workspace = true` from the host root `Cargo.toml`. So
+  the package keeps the repository layout: package root = repo root, Rust SDK root =
+  `<package>/symbian-rs` (symdev side must point `RustSdk` there, not at the package root).
+- `cargo metadata --manifest-path <tree>/symbian-rs/crates/symbian-libcalls/Cargo.toml`
+  (what the libcalls build loads): symbian-rs alone → `failed to load manifest for
+  dependency symdev-locale`; + root Cargo.toml + crates/symdev-locale but no
+  `symbian-rs/examples` → `failed to load manifest for workspace member …/examples/async`
+  (examples are workspace members); with examples → ok. The host root's other members
+  (crates/symdev-core …) are not needed.
+- Tree "Dmin" = `Cargo.toml`, `crates/symdev-locale`, `symbian-rs/{Cargo.toml, Cargo.lock,
+  rust-toolchain.toml, targets, crates, rust-src, shims, examples}`, made **read-only**
+  (`chmod -R a-w`): `symdev new hello --language rust` + `symdev build` (musl symdev from
+  the local attempt, classic SYMDEV_* env, `SYMDEV_RUST_SDK=<tree>/symbian-rs`) → ok, so the
+  build writes nothing into the package (Cargo.lock present and current). Same project
+  against the full checkout at the same path: `hello.elf` identical, `hello.exe` differs
+  only at 0x14–0x17 (header CRC) and 0x24–0x27 (time stamp). `examples/ui` (s60 shim) and
+  `examples/std-hello` (rust-src overlay, own workspace) also build inside a writable copy
+  of Dmin.
+- Left out: `symbian-rs/corpus` (experiment goldens), `symbian-rs/.cargo` (symdev passes the
+  target and build-std itself), `target/` (never in a git archive). Added: `LICENSE` (MIT
+  notice in every copy).
 
 ---
 
