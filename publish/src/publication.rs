@@ -1,9 +1,10 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use symdev_sdk::{ArchiveEntry, Index, IndexPackage, PackageId, Result, SdkError};
+use symdev_sdk::{ArchiveEntry, Index, IndexPackage, PackageId, Result, SdkError, SignedIndex};
 
 use crate::archive::Archive;
+use crate::index_keys::{IndexKeys, Unsigned};
 use crate::mode::Mode;
 use crate::recipe::Recipe;
 use crate::visibility::Visibility;
@@ -56,16 +57,27 @@ impl Publication {
     }
 
     /// Packs the archive into `out_dir/<sha256>.tar.gz`, checks it against the recipe,
-    /// adds the package to the bucket's index (refusing an id already there), then uploads
-    /// the archive, the source archive and last the index. A dry run writes the new index
-    /// to `out` instead of uploading anything. Progress goes to `progress`.
+    /// adds the package to the bucket's index (refusing an id already there, and an index
+    /// whose signature `keys` do not verify), then uploads the archive, the source archive
+    /// and last the index, signed. A dry run writes the new index to `out` instead of
+    /// uploading anything, signed when `keys` has the signing key. Progress goes to
+    /// `progress`.
     pub fn run(
         &self,
         mode: &Mode,
+        keys: &IndexKeys,
         out_dir: &Path,
         out: &mut dyn Write,
         progress: &mut dyn Write,
     ) -> Result<()> {
+        // An upload signs the index it writes: without the key, nothing is packed or sent.
+        let unsigned = match mode {
+            Mode::Upload(_) => {
+                keys.signer()?;
+                Unsigned::Refuse
+            }
+            Mode::DryRun(_) => Unsigned::Warn,
+        };
         let archive = self.recipe.pack(&self.from, out_dir)?;
         let line = format!(
             "packed {}: {} ({} bytes, sha256 {})",
@@ -82,7 +94,10 @@ impl Publication {
             Mode::Upload(bucket) => Some(bucket),
         };
         let mut index = match bucket {
-            Some(bucket) => bucket.index()?,
+            Some(bucket) => match keys.read(bucket, unsigned, progress)? {
+                Some(stored) => Index::parse(stored.body(), bucket.name())?,
+                None => Index::empty(),
+            },
             None => {
                 say(
                     progress,
@@ -106,13 +121,21 @@ impl Publication {
             }],
         })?;
         let uploads = [Some((key, archive)), source].into_iter().flatten();
+        let body = index.to_toml()?;
         match mode {
             Mode::DryRun(_) => {
-                let text = index.to_toml()?;
-                out.write_all(text.as_bytes())
+                let signed = keys.seal(&body);
+                out.write_all(signed.to_text().as_bytes())
                     .map_err(|e| io_error("stdout", e))?;
                 for (key, _) in uploads {
                     say(progress, &format!("dry run: would upload {key}"))?;
+                }
+                if !signed.is_signed() {
+                    say(
+                        progress,
+                        "dry run: PUBLISH_SIGNING_KEY is not set, so the index printed above is \
+                         unsigned; an upload signs it",
+                    )?;
                 }
                 say(
                     progress,
@@ -132,7 +155,7 @@ impl Publication {
                     progress,
                     &format!("uploading {}…", bucket.url("index.toml")?),
                 )?;
-                bucket.put_index(&index)?;
+                bucket.put_index(&SignedIndex::sign(&body, keys.signer()?))?;
                 say(
                     progress,
                     &format!("published {} to {}", self.id, bucket.name()),

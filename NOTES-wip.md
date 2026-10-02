@@ -8,7 +8,17 @@ push or merge. symdev side: `~/worktrees/symdev/index-signing` (its
 
 - `publish/Cargo.toml` takes symdev-sdk from that worktree by **path** for now (the lead
   switches it to the v0.2.0 tag at release); baseline with it: cargo test 53 + 9, install.sh
-  test 40 ok under dash.
+  test 39 ok under dash (40 with SYMDEV_TEST_BINARY).
+- Publisher signs (step 2): `IndexKeys` (publish/src/index_keys.rs) = signing key + trusted
+  keys (built-in + own); `publish` refuses to extend an index whose signature does not verify
+  and, on upload, an unsigned one (dry run: warning); `sign-index --bucket … [--dry-run]`
+  signs the stored body byte for byte, lists the archives, skips an upload that changes
+  nothing. cargo test 75 + 9, clippy 0, fmt ok.
+- Checked for real (read-only): `sign-index --bucket public --dry-run` against the live r2.dev
+  index (anonymous GET, PUBLISH_SIGNING_KEY from keys.env): body = live index byte for byte;
+  `openssl pkeyutl -verify -rawin` with the embedded PEM: Verified; one byte appended:
+  Failure. symdev (index-signing build) with a file:// mirror of it and `key = "builtin"`:
+  lists gcce/rust-sdk/symdev; tampered or unsigned → warning naming the URL. Nothing uploaded.
 
 # WIP: release prep — branch `release-prep`
 

@@ -1,25 +1,30 @@
-use symdev_sdk::{Result, S3Keys, SdkError};
+use symdev_sdk::{IndexSigningKey, Result, S3Keys, SdkError};
 
 use crate::bucket::Bucket;
+use crate::index_keys::IndexKeys;
 use crate::mode::Mode;
 use crate::visibility::Visibility;
 
-/// The publisher's environment: the buckets' S3 endpoints and the publisher key.
+/// The publisher's environment: the buckets' S3 endpoints, the publisher key and the index
+/// signing key.
 #[derive(Clone, Debug, Default)]
 pub struct Settings {
     pub private_url: Option<String>,
     pub public_url: Option<String>,
     pub access_key_id: Option<String>,
     pub secret_access_key: Option<String>,
+    /// The base64 of the Ed25519 seed every index is signed with (symdev spec §14).
+    pub signing_key: Option<String>,
 }
 
 const PRIVATE_URL: &str = "PUBLISH_PRIVATE_URL";
 const PUBLIC_URL: &str = "PUBLISH_PUBLIC_URL";
 const ACCESS_KEY_ID: &str = "PUBLISH_ACCESS_KEY_ID";
 const SECRET_ACCESS_KEY: &str = "PUBLISH_SECRET_ACCESS_KEY";
+const SIGNING_KEY: &str = "PUBLISH_SIGNING_KEY";
 
 impl Settings {
-    /// Reads the four `PUBLISH_*` variables; an empty one counts as unset.
+    /// Reads the five `PUBLISH_*` variables; an empty one counts as unset.
     pub fn from_env() -> Settings {
         let var = |name| std::env::var(name).ok().filter(|v| !v.is_empty());
         Settings {
@@ -27,6 +32,26 @@ impl Settings {
             public_url: var(PUBLIC_URL),
             access_key_id: var(ACCESS_KEY_ID),
             secret_access_key: var(SECRET_ACCESS_KEY),
+            signing_key: var(SIGNING_KEY),
+        }
+    }
+
+    /// The keys that sign the indexes a run writes. An upload needs the signing key; a dry
+    /// run signs with it when it is set. A malformed key is an error even in a dry run,
+    /// and the error never shows its value.
+    pub fn index_keys(&self, dry_run: bool) -> Result<IndexKeys> {
+        match (&self.signing_key, dry_run) {
+            (Some(text), _) => {
+                let key = IndexSigningKey::from_base64(text)
+                    .map_err(|e| SdkError::Other(format!("{SIGNING_KEY}: {e}")))?;
+                Ok(IndexKeys::new(Some(key)))
+            }
+            (None, true) => Ok(IndexKeys::new(None)),
+            (None, false) => Err(SdkError::Other(format!(
+                "{SIGNING_KEY} is not set; every index an upload writes is signed: set it to \
+                 the project key's seed (base64, in the owner's ~/.config/symdev/keys.env and \
+                 the `publish` environment's secret), or pass --dry-run"
+            ))),
         }
     }
 
@@ -81,7 +106,56 @@ mod tests {
             public_url: Some("https://acct.r2.cloudflarestorage.com/symdev-public/".into()),
             access_key_id: Some("AKID".into()),
             secret_access_key: Some("secret".into()),
+            signing_key: Some(SEED.into()),
         }
+    }
+
+    /// The base64 of the seed of 32 bytes 0x07.
+    const SEED: &str = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=";
+
+    fn keys_error(s: &Settings, dry_run: bool) -> String {
+        match s.index_keys(dry_run) {
+            Ok(_) => panic!("expected an error"),
+            Err(e) => e.to_string(),
+        }
+    }
+
+    #[test]
+    fn the_signing_key_signs_uploads_and_dry_runs() {
+        for dry_run in [false, true] {
+            assert!(all().index_keys(dry_run).unwrap().signer().is_ok());
+        }
+    }
+
+    #[test]
+    fn an_upload_without_the_signing_key_names_it() {
+        let s = Settings {
+            signing_key: None,
+            ..all()
+        };
+        let e = keys_error(&s, false);
+        assert!(e.starts_with("PUBLISH_SIGNING_KEY is not set"), "{e}");
+        assert!(e.contains("--dry-run"), "{e}");
+    }
+
+    #[test]
+    fn a_dry_run_without_the_signing_key_signs_nothing() {
+        let s = Settings {
+            signing_key: None,
+            ..all()
+        };
+        assert!(s.index_keys(true).unwrap().signer().is_err());
+    }
+
+    #[test]
+    fn a_malformed_signing_key_is_named_but_not_shown_even_in_a_dry_run() {
+        let s = Settings {
+            signing_key: Some("c2VjcmV0LXNlZWQ=".into()),
+            ..all()
+        };
+        let e = keys_error(&s, true);
+        assert!(e.starts_with("PUBLISH_SIGNING_KEY: "), "{e}");
+        assert!(!e.contains("c2VjcmV0LXNlZWQ"), "{e}");
     }
 
     fn error(s: &Settings, visibility: Visibility, dry_run: bool) -> String {
