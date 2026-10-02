@@ -49,8 +49,8 @@ jobs:
         run: /opt/gcce/bin/arm-none-symbianelf-g++ -v
 
       # GPL corresponding source: every [[source]] file build.sh fetched and checked (its
-      # SHA256SUMS) and the whole recipe directory (recipe.toml, build.sh, our libgcov patch
-      # and sys-include headers).
+      # SHA256SUMS) and the whole recipe directory (recipe.toml, build.sh and our
+      # sys-include headers).
       - name: Pack the corresponding source
         run: |
           src=gcce-12.1.0-source

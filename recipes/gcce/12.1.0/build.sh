@@ -11,8 +11,9 @@
 # (GCC4Symbian's build-toolchain.sh, plus binutils 2.29.1 configured like its binutils
 # step); symdev experiment 107. Nothing here was added beyond what that build did, except
 # that binutils is 2.29.1 (GCC4Symbian's 2.35 ld rejects the SDK's euser.dso), gdb is not
-# built, and the three files that build took from GCC4Symbian are ours, next to this
-# script (symdev experiment 108: the same target libraries and c++config.h).
+# built, and what that build took from GCC4Symbian is ours (symdev experiment 108: the
+# same target libraries and c++config.h): the two sys-include headers next to this script
+# and a -D for libgcov instead of a changed libgcov-driver.c.
 set -euo pipefail
 
 if [ $# -ne 1 ] || [ "${1#/}" = "$1" ]; then
@@ -58,8 +59,6 @@ for lib in gmp-6.1.0.tar.bz2 mpfr-4.1.0.tar.bz2 mpc-1.2.1.tar.gz isl-0.16.1.tar.
   tar -xf "$lib"
   mv "$dir" "gcc-12.1.0/${dir%-*}"
 done
-# arm-none-symbianelf predefines no __INTPTR_TYPE__, which libgcov-driver.c casts through.
-patch -d gcc-12.1.0 -p1 < "$here/libgcov-intptr.patch"
 
 # --- binutils --------------------------------------------------------------------------
 mkdir build-binutils
@@ -84,6 +83,12 @@ mkdir build-gcc
 (
   cd build-gcc
   export CFLAGS="-pipe"
+  # arm-none-symbianelf predefines no __INTPTR_TYPE__ (config.gcc gives it no *-stdint.h),
+  # and libgcc/libgcov-driver.c casts a gcov_type to a pointer through it. Define it as
+  # int, the type GCC's newlib-stdint.h gives intptr_t on ARM, for the target libraries
+  # only; "-g -O2" is configure's default for a cross compiler. Only libgcov reads it and
+  # DWARF does not record -D, so GCC's source stays unchanged (symdev experiment 108).
+  export CFLAGS_FOR_TARGET="-g -O2 -D__INTPTR_TYPE__=int"
   ../gcc-12.1.0/./configure --target=$target --prefix="$prefix" --without-headers \
     --enable-languages="c,c++,lto" --enable-lto --enable-interwork \
     --enable-long-long --enable-tls --enable-multilib --enable-wchar_t \

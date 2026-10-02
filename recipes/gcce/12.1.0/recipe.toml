@@ -7,9 +7,10 @@
 # path segment.
 #
 # Every [[source]] is an official GNU tarball. The three files that build took from
-# GCC4Symbian are replaced by ours, written from GCC's requirements and kept next to this
-# file (symdev experiment 108): libgcov-intptr.patch (libgcov's missing __INTPTR_TYPE__),
-# sys-include/stdint.h and sys-include/stdio.h.
+# GCC4Symbian are replaced by ours, written from GCC's requirements (symdev experiment
+# 108): sys-include/stdint.h and sys-include/stdio.h next to this file, and instead of a
+# changed libgcc/libgcov-driver.c, build.sh's CFLAGS_FOR_TARGET defines the
+# __INTPTR_TYPE__ that arm-none-symbianelf does not predefine.
 id = "gcce;12.1.0"
 license = "GPL-3.0-or-later"
 host = "x86_64-linux"
