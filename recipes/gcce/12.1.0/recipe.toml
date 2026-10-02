@@ -1,7 +1,7 @@
 # gcce;12.1.0 — GNU binutils 2.29.1 and GCC 12.1.0 for arm-none-symbianelf, one prefix.
 #
-# Reproduces the toolchain symdev was developed with (~/gcc-builds on the owner's host,
-# built by fedor4ever/GCC4Symbian's build-toolchain.sh); the steps and flags in build.sh
+# Reproduces the toolchain symdev was developed with (a GCC 12.1.0 built by
+# fedor4ever/GCC4Symbian's build-toolchain.sh); the steps and flags in build.sh
 # are the ones recovered from that build (symdev experiment 107). build.sh reads the
 # [[source]] tables below: `url` first, then `sha256`; the file name is the URL's last
 # path segment.
