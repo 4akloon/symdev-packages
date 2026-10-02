@@ -15,7 +15,7 @@ compile-time source-checkout fallback for the Rust SDK; changed on another branc
 |---|---|
 | baseline: cargo test | 41 + 5 pass (da61f8a) |
 | 1 publish file + symdev.yml | done (53 + 9 tests) |
-| SYMDEV_RELEASE=1 in build.sh | todo |
+| SYMDEV_RELEASE=1 in build.sh | done (prefix on the cargo build line; symdev side on another branch) |
 | 2 notices generator + build.sh | todo (research done, below) |
 | 3 install test in CI | todo |
 

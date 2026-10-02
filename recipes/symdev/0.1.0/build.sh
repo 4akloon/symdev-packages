@@ -72,7 +72,12 @@ done
 
 # --- static binary ---------------------------------------------------------------------
 rustc -vV
-(cd "$src" && cargo build --release --locked -p symdev-cli --target "$target")
+# SYMDEV_RELEASE=1, read by symdev at compile time (option_env!), removes its fallback to the
+# source checkout it was built from when it looks for the Rust SDK: on a user's machine that
+# path (this build's $src) is just a directory a local user could create, holding a planted
+# symbian-rs. A released symdev finds the SDK only through SYMDEV_RUST_SDK or the installed
+# rust-sdk package.
+(cd "$src" && SYMDEV_RELEASE=1 cargo build --release --locked -p symdev-cli --target "$target")
 bin=${CARGO_TARGET_DIR:-$src/target}/$target/release/symdev
 kind=$(file -bL "$bin")
 case $kind in
