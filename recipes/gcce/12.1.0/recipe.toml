@@ -37,9 +37,11 @@ sha256 = "17503d2c395dfcf106b622dc142683c1199431d095367c6aacba6eec30340459"
 url = "https://gcc.gnu.org/pub/gcc/infrastructure/isl-0.16.1.tar.bz2"
 sha256 = "412538bb65c799ac98e17e8cfcdacbb257a57362acfaaff254b0fcae970126d2"
 
-# GCC4Symbian at fe1b15a: libgcc/libgcov-driver.c with a fallback `__INTPTR_TYPE__`
-# (arm-none-symbianelf does not predefine it), and the two headers its build installs as
-# the target's sys-include (libstdc++'s configure needs stdio.h's EOF and SEEK_*).
+# GCC4Symbian at fe1b15a, each needed (experiment 107): libgcc/libgcov-driver.c with a
+# fallback `__INTPTR_TYPE__`, which arm-none-symbianelf does not predefine (pristine:
+# libgcov fails to compile); sys-include/stdint.h (without it libsupc++'s new_opa.cc does
+# not compile); sys-include/stdio.h (without it libstdc++'s header checks fail and the
+# installed c++config.h loses _GLIBCXX_HAVE_{FLOAT,STDALIGN,STDBOOL,STDINT}_H).
 [[source]]
 url = "https://raw.githubusercontent.com/fedor4ever/GCC4Symbian/fe1b15a1c25716d5c515f12593080d58f14d4c3f/build-data/GCC-12.1.0/libgcov-driver.c"
 sha256 = "3178078259108b36b0789c71a638c2c7ab1348594a768598342b36eeaece7011"
