@@ -1,3 +1,15 @@
+# WIP: G2 signed indexes — branch `index-signing`
+
+Brief (lead, 2026-10-03): `publish` signs every index it writes with `PUBLISH_SIGNING_KEY`
+(symdev-sdk's `SignedIndex`), a `publish sign-index --bucket public|private` re-signs the live
+indexes, install.sh verifies with OpenSSL 3, CI passes the secret to upload jobs only. Never
+push or merge. symdev side: `~/worktrees/symdev/index-signing` (its
+`docs/research/wip/v0.2.md`, section G2, is the main record).
+
+- `publish/Cargo.toml` takes symdev-sdk from that worktree by **path** for now (the lead
+  switches it to the v0.2.0 tag at release); baseline with it: cargo test 53 + 9, install.sh
+  test 40 ok under dash.
+
 # WIP: release prep — branch `release-prep`
 
 Brief (2026-10-02, from the lead): worktree `~/worktrees/symdev-packages/release-prep`; never
