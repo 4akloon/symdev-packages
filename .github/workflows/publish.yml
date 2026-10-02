@@ -5,6 +5,8 @@
 #   variable PUBLISH_PUBLIC_URL   the public bucket's S3 endpoint,
 #                                 https://<account>.r2.cloudflarestorage.com/symdev-public/
 #   secrets  PUBLISH_ACCESS_KEY_ID, PUBLISH_SECRET_ACCESS_KEY   the publisher key
+#            PUBLISH_SIGNING_KEY   the index signing key (symdev spec §14), given only to
+#                                  the step that writes the index
 #
 # publish refuses an id already in the index, so a changed recipe of a published version
 # fails here: a rebuild is a new version.
@@ -57,6 +59,7 @@ jobs:
           PUBLISH_PUBLIC_URL: ${{ vars.PUBLISH_PUBLIC_URL }}
           PUBLISH_ACCESS_KEY_ID: ${{ secrets.PUBLISH_ACCESS_KEY_ID }}
           PUBLISH_SECRET_ACCESS_KEY: ${{ secrets.PUBLISH_SECRET_ACCESS_KEY }}
+          PUBLISH_SIGNING_KEY: ${{ secrets.PUBLISH_SIGNING_KEY }}
         run: |
           cargo run --release --locked -p publish -- public 'gcce;12.1.0' \
             --from "$RUNNER_TEMP/gcce" \

@@ -37,13 +37,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # install.sh.test needs python3 (the fake bucket) and runs install.sh with dash; with
-      # busybox it also runs it in a PATH of busybox applets (wget instead of curl, no flock).
-      # Only what this runner image lacks is installed.
+      # install.sh.test needs python3 (the fake bucket) and openssl 3 (index signatures), and
+      # runs install.sh with dash; with busybox it also runs it in a PATH of busybox applets
+      # (wget instead of curl, no flock, no openssl). Only what this runner image lacks is
+      # installed.
       - name: Install what the tests need
         run: |
           missing=
-          for tool in python3 dash busybox curl ar; do
+          for tool in python3 dash busybox curl ar openssl; do
             command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
           done
           echo "missing:${missing:- none}"

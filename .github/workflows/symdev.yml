@@ -12,7 +12,9 @@
 # Settings, as for GCCE (publish.yml): repository variable PUBLIC_READ_URL (the public
 # bucket's r2.dev URL, read by the dry run; unset = empty index); environment `publish`
 # (main only) with variable PUBLISH_PUBLIC_URL and secrets PUBLISH_ACCESS_KEY_ID,
-# PUBLISH_SECRET_ACCESS_KEY.
+# PUBLISH_SECRET_ACCESS_KEY and PUBLISH_SIGNING_KEY (the index signing key, symdev spec §14:
+# given only to the two steps that write the index; the dry runs print an unsigned index and
+# the install.sh uploads do not touch it).
 #
 # install.sh (spec §12) lives at the public bucket's root: publish-symdev uploads it last,
 # after symdev;<ver> is in the index, and a manual run with `install_sh_only` uploads only
@@ -176,6 +178,7 @@ jobs:
           PUBLISH_PUBLIC_URL: ${{ vars.PUBLISH_PUBLIC_URL }}
           PUBLISH_ACCESS_KEY_ID: ${{ secrets.PUBLISH_ACCESS_KEY_ID }}
           PUBLISH_SECRET_ACCESS_KEY: ${{ secrets.PUBLISH_SECRET_ACCESS_KEY }}
+          PUBLISH_SIGNING_KEY: ${{ secrets.PUBLISH_SIGNING_KEY }}
         run: |
           cargo run --release --locked -p publish -- public "rust-sdk;$VERSION" \
             --from "$RUNNER_TEMP/out/rust-sdk" \
@@ -212,6 +215,7 @@ jobs:
           PUBLISH_PUBLIC_URL: ${{ vars.PUBLISH_PUBLIC_URL }}
           PUBLISH_ACCESS_KEY_ID: ${{ secrets.PUBLISH_ACCESS_KEY_ID }}
           PUBLISH_SECRET_ACCESS_KEY: ${{ secrets.PUBLISH_SECRET_ACCESS_KEY }}
+          PUBLISH_SIGNING_KEY: ${{ secrets.PUBLISH_SIGNING_KEY }}
         run: |
           cargo run --release --locked -p publish -- public "symdev;$VERSION" \
             --from "$RUNNER_TEMP/out/symdev" \
