@@ -1,0 +1,26 @@
+# sdk;s60-3rd-fp2;1.1 — what a GCCE build reads from the S60 3rd Edition FP2 SDK (v1.1):
+# the headers, the .dso import stubs, the three static libraries the link line names and
+# variant.cfg (symdev spec 2026-10-02 §2). The RVCT .lib import libraries beside the .dso
+# files are left out: GCCE links the .dso.
+#
+# The bytes are Nokia's (EULA, no redistribution grant): they live only on the owner's
+# machine and in the private bucket, never in this repository. Published by the owner with
+#   publish private 'sdk;s60-3rd-fp2;1.1' --from ~/sdk/S60_3rd_FP2 --recipe <this file>
+#
+# usrt2_2.lib is in urel, not lib: symdev links it with `-L <epocroot>/epoc32/release/armv5/urel
+# -l:usrt2_2.lib` (symdev-build driver/link.rs), and the SDK has no lib/usrt2_2.lib.
+#
+# sha256 pins the archive packed from the owner's SDK on 2026-10-02: 4 941 155 bytes,
+# 2 697 files (2 123 headers, 570 .dso, 3 .lib, variant.cfg), 31 MB unpacked.
+id = "sdk;s60-3rd-fp2;1.1"
+license = "LicenseRef-Nokia-S60-SDK-EULA"
+host = "any"
+include = [
+  "epoc32/include",
+  "epoc32/release/armv5/lib/*.dso",
+  "epoc32/release/armv5/urel/usrt2_2.lib",
+  "epoc32/release/armv5/urel/eexe.lib",
+  "epoc32/release/armv5/urel/edll.lib",
+  "epoc32/tools/variant/variant.cfg",
+]
+sha256 = "cbec6da885cfa11bfc5898b544c30fa961b57e57c52641b12d463380ca162a5f"

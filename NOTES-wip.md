@@ -10,7 +10,7 @@ Worktree `~/worktrees/symdev-packages/publish`. Do not touch `recipes/gcce/` or 
 | Task | State |
 |---|---|
 | E1 `publish` binary | done (35 tests) |
-| E2 SDK recipe + subset proof | not started |
+| E2 SDK recipe + subset proof | done |
 | E3 workflows | not started |
 
 ## Facts
@@ -55,6 +55,36 @@ Worktree `~/worktrees/symdev-packages/publish`. Do not touch `recipes/gcce/` or 
 - `cargo fmt` in this repo does not touch the symdev-sdk path dep (checked: toolchain-manager
   worktree stayed clean).
 
+## E2 results (2026-10-02)
+
+- Plan's literal include list: `error: include `epoc32/release/armv5/lib/usrt2_2.lib`
+  matches nothing in /home/genius/sdk/S60_3rd_FP2` (exit 1). Recipe uses
+  `epoc32/release/armv5/urel/usrt2_2.lib` instead (the spec §2 text "usrt2_2.lib there
+  [lib]" has the same error — for the lead to fix in the spec/plan).
+- Two dry runs (scratch `…/scratchpad/e2/run1`, `run2`, no `PUBLISH_*` set):
+  sha256 `cbec6da885cfa11bfc5898b544c30fa961b57e57c52641b12d463380ca162a5f`, 4 941 155
+  bytes, both times; ~1 s each. 2 697 files: 2 123 headers, 570 `.dso`, 3 `.lib`,
+  `variant.cfg`; 31 MB unpacked. `diff -r` of `epoc32/include` against the SDK: identical;
+  the other 574 files `cmp`-equal. Pinned in the recipe; a third dry run passes and
+  prints the index.
+- Extracted with `symdev_sdk::TarGz::extract` (scratch crate) → same tree as system tar.
+- Build proof (scratch `e2/build.sh`: fresh copy of the toolchain-manager tree at one fixed
+  path, `LD_PRELOAD` clock shim built in scratch from Track C's `fixtime.c` source so the
+  E32 header time is fixed, env as in the brief, symdev from toolchain-manager
+  `target/release`): `examples/hello`, `examples/gui`, `symbian-rs/examples/hello`, and
+  `calc` + `mathlib.dll` all build with `SYMDEV_EPOCROOT=<subset>` and with
+  `~/sdk/S60_3rd_FP2`. `cmp`: every `.exe`, `.dll`, `.elf`, `.o`, `.dso`, `.def`, `.rsc`,
+  `.rsg`, `.mif`, `.mbg`, `symdev-gcce-compat.h` identical. Different only:
+  `*.map` (identical after replacing the EPOCROOT prefix), `sdk-include-casefold/.symdev-casefold`
+  (holds the EPOCROOT include path), Rust `shims/libsymrs.a` (7 members equal in name,
+  mode, size and bytes; only ar member mtimes differ — the `.o` files' real mtimes).
+- No DLL project exists in the repo (examples, `crates/symdev-cli/tests`, fixtures: only
+  `Mmp::parse` unit strings). Reconstructed in scratch from experiment 53's recorded
+  procedure: `symdev new calc`, `group/mathlib.mmp` (`TARGETTYPE DLL`,
+  `UID 0x1000008d 0xe5d1b001`) before `calc.mmp`, `LIBRARY mathlib.lib`, experiment 52's
+  `mathlib.{h,cpp}` from `~/src/symdev-experiment-52`, `hello.cpp` printing
+  `MathTwice(21)`/`MathAbs(-5)`.
+
 ## Next step
 
-E2: SDK recipe, two dry runs in a scratch dir, subset build proof.
+E3: workflows; needs Track C's apt list (experiment 107) — check `recipes/gcce/12.1.0/` and the tm-gcce wip note.
