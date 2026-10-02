@@ -17,7 +17,7 @@ compile-time source-checkout fallback for the Rust SDK; changed on another branc
 | 1 publish file + symdev.yml | done (53 + 9 tests) |
 | SYMDEV_RELEASE=1 in build.sh | done (prefix on the cargo build line; symdev side on another branch) |
 | 2 notices generator + build.sh | done (13 Python tests; local build.sh run) |
-| 3 install test in CI | todo |
+| 3 install test in CI | done (.github/workflows/tests.yml) |
 
 ## Facts (item 2, measured 2026-10-02 on toolchain-manager 5c90f9c)
 
@@ -56,6 +56,18 @@ compile-time source-checkout fallback for the Rust SDK; changed on another branc
 - **musl's COPYRIGHT is nowhere on this host** (rust-std ships libc.a without it; not in the
   cargo registry, rust-src, /usr/share/doc; no musl package installed). Not downloaded
   (needs the owner's approval) → listed with SPDX MIT and "no file shipped": a gap to report.
+
+## Item 3: tests in CI (2026-10-02)
+
+- New `.github/workflows/tests.yml` (pull_request + push to main on install.sh, tests/**,
+  tools/**, publish/**, Cargo.toml, Cargo.lock, itself): ubuntu-24.04; installs only what
+  is missing of python3, dash, busybox, curl, ar (binutils); Rust 1.98.1; `cargo test
+  --locked`; `sh tests/install.sh.test <dash>` and `<bash>`; `python3 -m unittest discover
+  -s tests -p '*_test.py'`. No secrets, `contents: read`; the install test serves its bucket
+  on 127.0.0.1. Blocked like the others until R4 (publish's path dep).
+- Run locally step by step: install step → "missing: none"; cargo test 53 + 9; install test
+  39 ok under dash and bash (busybox case included); notices tests OK. Also on Python 3.13;
+  `ast.parse(feature_version=(3, 8/10/12))` accepts both Python files (runner has 3.12).
 
 ## Item 2: THIRD-PARTY-NOTICES.txt (2026-10-02)
 
