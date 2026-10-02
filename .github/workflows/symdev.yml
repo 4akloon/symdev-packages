@@ -17,9 +17,6 @@
 # install.sh (spec §12) lives at the public bucket's root: publish-symdev uploads it last,
 # after symdev;<ver> is in the index, and a manual run with `install_sh_only` uploads only
 # it (after a fix to install.sh, without a release).
-#
-# Not runnable yet, on purpose: publish's symdev-sdk dependency is a local path until task R4
-# switches it to a git tag (as build.yml and publish.yml).
 name: symdev
 
 on:

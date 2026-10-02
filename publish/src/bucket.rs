@@ -1,9 +1,7 @@
 use std::io::Write;
 
 use sha2::{Digest, Sha256};
-use symdev_sdk::{
-    Auth, Fetch, HttpFetch, Index, Result, S3Keys, SdkError, SigV4, SourceSpec, resolve_url,
-};
+use symdev_sdk::{Auth, Fetch, HttpFetch, Index, Result, S3Keys, SdkError, SigV4, SourceSpec};
 
 use crate::archive::Archive;
 
@@ -32,7 +30,7 @@ impl Bucket {
         }
         let signer = keys.map(|keys| SigV4::s3(keys, "auto"));
         Ok(Bucket {
-            fetch: HttpFetch::new(name, signer),
+            fetch: HttpFetch::new(&spec, signer),
             spec,
         })
     }
@@ -43,7 +41,7 @@ impl Bucket {
 
     /// The URL of the object `key` (relative to the bucket).
     pub fn url(&self, key: &str) -> Result<String> {
-        resolve_url(&self.spec.base, key)
+        self.spec.resolve(key)
     }
 
     /// The bucket's `index.toml`; a bucket without one (HTTP 404) has an empty index.

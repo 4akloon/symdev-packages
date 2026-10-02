@@ -2,9 +2,6 @@
 # (install.sh against a fake bucket that `python3 -m http.server` serves on 127.0.0.1, with
 # an index written by `publish --dry-run`), the notices generator's unit tests, and the
 # publisher's cargo tests. Hermetic: no bucket, no secret, nothing leaves the runner.
-#
-# Not runnable yet, on purpose: publish's symdev-sdk dependency is a local path until task R4
-# switches it to a git tag (as build.yml, publish.yml and symdev.yml).
 name: tests
 
 on:

@@ -547,6 +547,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "symdev-core"
 version = "0.1.0"
+source = "git+https://github.com/4akloon/symdev?tag=v0.1.0#9377fe1ea80169585e720d0c968fd514e6beb4ff"
 dependencies = [
  "thiserror",
 ]
@@ -554,6 +555,7 @@ dependencies = [
 [[package]]
 name = "symdev-manifest"
 version = "0.1.0"
+source = "git+https://github.com/4akloon/symdev?tag=v0.1.0#9377fe1ea80169585e720d0c968fd514e6beb4ff"
 dependencies = [
  "serde",
  "thiserror",
@@ -563,6 +565,7 @@ dependencies = [
 [[package]]
 name = "symdev-sdk"
 version = "0.1.0"
+source = "git+https://github.com/4akloon/symdev?tag=v0.1.0#9377fe1ea80169585e720d0c968fd514e6beb4ff"
 dependencies = [
  "flate2",
  "hmac",

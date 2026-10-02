@@ -7,7 +7,7 @@
 #   secrets  PUBLISH_ACCESS_KEY_ID, PUBLISH_SECRET_ACCESS_KEY   the publisher key
 #
 # publish refuses an id already in the index, so a changed recipe of a published version
-# fails here: a rebuild is a new version. Not runnable until build.yml is (see there).
+# fails here: a rebuild is a new version.
 name: publish
 
 on:

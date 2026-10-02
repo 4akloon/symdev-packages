@@ -2,9 +2,6 @@
 # to a bucket. Runs on pull requests that touch the GCCE recipe or the publisher, and as the
 # first half of publish.yml (workflow_call). The symdev recipes have their own workflow
 # (symdev.yml).
-#
-# Not runnable yet, on purpose: publish's symdev-sdk dependency is a local path until task R4
-# switches it to a git tag.
 name: build
 
 on:
