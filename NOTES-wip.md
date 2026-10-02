@@ -19,6 +19,22 @@ compile-time source-checkout fallback for the Rust SDK; changed on another branc
 | 2 notices generator + build.sh | done (13 Python tests; local build.sh run) |
 | 3 install test in CI | done (.github/workflows/tests.yml) |
 
+Final gates (71a657b): `cargo fmt --check` ok; `cargo clippy --all-targets` 0 warnings
+(fresh); `cargo test` 53 + 9; `tests/install.sh.test` 40 ok under dash with
+`SYMDEV_TEST_BINARY=<the build.sh-made static symdev>` (`symdev sdk list` shows it); Python
+tests 13 OK; all four workflows parse. README updated.
+
+## Next step (open for the lead/owner)
+
+- musl's COPYRIGHT: the only notice gap. Proposal: with the owner's OK, take COPYRIGHT from
+  musl-1.2.5.tar.gz (musl.libc.org, pinned SHA-256), keep it in this repository (e.g.
+  `tools/licenses/musl-1.2.5-COPYRIGHT`) and have the generator use it when libc.a's version
+  matches, failing otherwise.
+- Unverified until CI runs (blocked on R4 like every workflow here): the `if:` expressions of
+  symdev.yml (`install_sh_only`), the musl-gcc build with LIBZ_SYS_STATIC=1, the tests.yml job.
+- install.sh changes on main are uploaded only with the next release or a manual
+  `install_sh_only` run (as briefed); a push trigger on install.sh would be one more job.
+
 ## Facts (item 2, measured 2026-10-02 on toolchain-manager 5c90f9c)
 
 - `cargo metadata --format-version 1 --filter-platform x86_64-unknown-linux-musl --offline
