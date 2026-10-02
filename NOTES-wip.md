@@ -54,7 +54,7 @@ Done; open for the lead/owner: the tag v0.1.0; R4 (publish's symdev-sdk git dep)
 workflow runs; the musl build in CI is unproven until it runs (locally only with the host gcc
 as CC); uploading install.sh to the bucket root (no-cache) has no step yet; the install test
 is not in CI; notices of third-party crates linked into the binary are not bundled;
-build.yml's PR filter edit may need a trivial merge with gcce-own.
+main moved to ac81872 (gcce-own merged): `git merge-tree` of main and this branch is clean, the merged build.yml parses, and main's new GCCE recipe (licence `GPL-3.0-or-later AND MIT`) passes `publish public --dry-run`.
 
 
 ## Local musl attempt (2026-10-02)
