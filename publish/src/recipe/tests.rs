@@ -7,6 +7,9 @@ use symdev_sdk::{Host, TarGz};
 
 use super::Recipe;
 
+mod packages;
+
+const SDK: &str = "sdk;s60-3rd-fp2;1.1";
 const SHA: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 fn sdk_recipe(include: &str) -> String {
@@ -67,8 +70,8 @@ fn unpack(archive: &Path) -> (tempfile::TempDir, PathBuf) {
 #[test]
 fn parses_the_sdk_recipe() {
     let text = format!("{}sha256 = \"{SHA}\"\n", sdk_recipe("\"epoc32/include\""));
-    let r = Recipe::parse(&text, "r.toml").unwrap();
-    assert_eq!(r.id().as_str(), "sdk;s60-3rd-fp2;1.1");
+    let r = Recipe::parse(&text, "r.toml", SDK).unwrap();
+    assert_eq!(r.id().as_str(), SDK);
     assert_eq!(r.license(), "LicenseRef-Nokia-S60-SDK-EULA");
     assert_eq!(r.host(), Host::Any);
     assert_eq!(r.sha256(), Some(SHA));
@@ -79,15 +82,27 @@ fn parses_the_gcce_recipe_with_its_build_script_and_sources() {
     let text = "id = \"gcce;12.1.0\"\nlicense = \"GPL-3.0-or-later\"\nhost = \"x86_64-linux\"\n\
                 build = \"build.sh\"\n\n[[source]]\nurl = \"https://ftp.gnu.org/gnu/gcc/a.tar.xz\"\n\
                 sha256 = \"62fd634889f31c02b64af2c468f064b47ad1ca78411c45abe6ac4b5f8dd19c7b\"\n";
-    let r = Recipe::parse(text, "r.toml").unwrap();
+    let r = Recipe::parse(text, "r.toml", "gcce;12.1.0").unwrap();
     assert_eq!(r.host(), Host::X86_64Linux);
     assert_eq!(r.sha256(), None);
 }
 
 #[test]
+fn an_id_the_recipe_does_not_make_is_refused_naming_the_one_it_makes() {
+    let text = sdk_recipe("\"epoc32/include\"");
+    let e = Recipe::parse(&text, "recipes/sdk/r.toml", "sdk;s60-3rd-fp2;1.2")
+        .unwrap_err()
+        .to_string();
+    assert!(
+        e.contains("`sdk;s60-3rd-fp2;1.2`") && e.contains(SDK) && e.contains("recipes/sdk/r.toml"),
+        "{e}"
+    );
+}
+
+#[test]
 fn an_unknown_key_is_refused_naming_it_and_the_recipe() {
     let text = sdk_recipe("\"epoc32/include\"").replace("include", "inlcude");
-    let e = Recipe::parse(&text, "recipes/sdk/r.toml")
+    let e = Recipe::parse(&text, "recipes/sdk/r.toml", SDK)
         .unwrap_err()
         .to_string();
     assert!(
@@ -100,7 +115,7 @@ fn an_unknown_key_is_refused_naming_it_and_the_recipe() {
 fn a_sha256_that_is_not_64_lowercase_hex_is_refused() {
     for bad in ["abc", &SHA.to_uppercase()] {
         let text = format!("{}sha256 = \"{bad}\"\n", sdk_recipe("\"epoc32/include\""));
-        let e = Recipe::parse(&text, "r.toml").unwrap_err().to_string();
+        let e = Recipe::parse(&text, "r.toml", SDK).unwrap_err().to_string();
         assert!(e.contains("sha256") && e.contains(bad), "{e}");
     }
 }
@@ -116,7 +131,7 @@ fn an_include_pattern_must_stay_relative_with_a_star_only_in_its_last_segment() 
         "a\\b",
     ] {
         let text = sdk_recipe(&format!("{bad:?}"));
-        let e = Recipe::parse(&text, "r.toml").unwrap_err().to_string();
+        let e = Recipe::parse(&text, "r.toml", SDK).unwrap_err().to_string();
         assert!(e.contains(&format!("`{bad}`")), "{bad}: {e}");
     }
 }
@@ -129,7 +144,7 @@ fn packs_only_what_the_include_list_names() {
          \"epoc32/release/armv5/urel/eexe.lib\", \"epoc32/tools/variant/variant.cfg\"",
     );
     let out = tempfile::tempdir().unwrap();
-    let archive = Recipe::parse(&text, "r.toml")
+    let archive = Recipe::parse(&text, "r.toml", SDK)
         .unwrap()
         .pack(tree.path(), out.path())
         .unwrap();
@@ -158,7 +173,8 @@ fn packs_only_what_the_include_list_names() {
 #[test]
 fn packing_the_same_tree_twice_gives_the_same_sha256() {
     let tree = sdk_tree();
-    let recipe = Recipe::parse(&sdk_recipe("\"epoc32/release/armv5/lib/*.dso\""), "r").unwrap();
+    let recipe =
+        Recipe::parse(&sdk_recipe("\"epoc32/release/armv5/lib/*.dso\""), "r", SDK).unwrap();
     let a = recipe
         .pack(tree.path(), tempfile::tempdir().unwrap().path())
         .unwrap();
@@ -176,7 +192,7 @@ fn a_pattern_that_matches_nothing_is_an_error_naming_it() {
         "epoc32/release/armv5/lib/usrt2_2.lib",
         "epoc32/release/gcce/*.dso",
     ] {
-        let recipe = Recipe::parse(&sdk_recipe(&format!("{pattern:?}")), "r").unwrap();
+        let recipe = Recipe::parse(&sdk_recipe(&format!("{pattern:?}")), "r", SDK).unwrap();
         let out = tempfile::tempdir().unwrap();
         let e = recipe
             .pack(tree.path(), out.path())
@@ -198,7 +214,7 @@ fn without_an_include_list_the_whole_tree_is_packed() {
     let tree = sdk_tree();
     let text = "id = \"gcce;12.1.0\"\nlicense = \"GPL-3.0-or-later\"\nhost = \"x86_64-linux\"\n";
     let out = tempfile::tempdir().unwrap();
-    let archive = Recipe::parse(text, "r")
+    let archive = Recipe::parse(text, "r", "gcce;12.1.0")
         .unwrap()
         .pack(tree.path(), out.path())
         .unwrap();

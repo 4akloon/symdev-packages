@@ -14,6 +14,9 @@ machine and in the private bucket.
 recipes/gcce/12.1.0/recipe.toml          # sources + sha256; built by build.sh in CI
 recipes/gcce/12.1.0/build.sh
 recipes/sdk/s60-3rd-fp2/1.1/recipe.toml  # paths taken from the SDK, pinned archive sha256
+recipes/symdev/0.1.0/recipe.toml         # symdev;0.1.0 + rust-sdk;0.1.0 from the tag v0.1.0
+recipes/symdev/0.1.0/build.sh
+install.sh                               # installs the newest symdev from the public bucket
 publish/                                 # the publisher (Rust, on symdev-sdk)
 .github/workflows/                       # build.yml (PRs, no upload), publish.yml (main)
 ```
@@ -28,6 +31,12 @@ publish/                                 # the publisher (Rust, on symdev-sdk)
 | `include` | optional: paths relative to `--from` (a `*` only in the last segment); without it all of `--from` is packed |
 | `sha256` | the archive's hash; required for `private`, checked whenever present |
 | `build`, `[[source]]` | the build script and its pinned sources (read by `build.sh` and CI) |
+| `git`, `tag` | a source tree instead of tarballs: the repository and the tag `build.sh` checks out |
+
+A build that makes several packages (the symdev release makes `symdev` and `rust-sdk` from
+one tag) keeps `git`, `tag`, `build` and `[[source]]` at the top and gives each package a
+`[[package]]` table with its own `id`, `license`, `host`, `include` and `sha256`. `publish`
+takes the package named by its `<id>` argument and checks all of them.
 
 ## Publishing
 

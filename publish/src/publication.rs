@@ -19,25 +19,16 @@ pub struct Publication {
 }
 
 impl Publication {
-    /// Checks that `id` is the recipe's, that a public package has its source code and a
-    /// proprietary licence (`LicenseRef-…`) goes only to the private bucket.
+    /// Checks that a public package has its source code and a proprietary licence
+    /// (`LicenseRef-…`) goes only to the private bucket.
     pub fn new(
         visibility: Visibility,
-        id: &str,
         recipe: Recipe,
         from: &Path,
         source_code: Option<&Path>,
     ) -> Result<Publication> {
-        let id = PackageId::parse(id)?;
+        let id = recipe.id().clone();
         let refuse = |detail: String| Err(SdkError::Other(detail));
-        if &id != recipe.id() {
-            return refuse(format!(
-                "`{id}` is not the package of {} (`{}`); pass the recipe's id or the right \
-                 recipe",
-                recipe.path(),
-                recipe.id()
-            ));
-        }
         match (visibility, source_code) {
             (Visibility::Public, _) if recipe.license().starts_with("LicenseRef-") => {
                 refuse(format!(

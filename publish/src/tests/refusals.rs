@@ -98,39 +98,16 @@ fn a_bucket_that_fails_to_answer_the_index_is_not_taken_for_an_empty_one() {
 }
 
 #[test]
-fn the_id_argument_must_be_the_recipes() {
-    let sdk = sdk_tree();
-    let e = Publication::new(
-        Visibility::Private,
-        "sdk;s60-3rd-fp2;1.2",
-        sdk_recipe(None),
-        sdk.path(),
-        None,
-    )
-    .err()
-    .unwrap()
-    .to_string();
-    assert!(e.contains("sdk;s60-3rd-fp2;1.2") && e.contains(SDK), "{e}");
-}
-
-#[test]
 fn a_public_package_needs_its_source_code_and_a_private_one_takes_none() {
     let prefix = tree(&[("bin/g++", "g++")]);
-    let e = Publication::new(
-        Visibility::Public,
-        "gcce;12.1.0",
-        gcce_recipe(),
-        prefix.path(),
-        None,
-    )
-    .err()
-    .unwrap()
-    .to_string();
+    let e = Publication::new(Visibility::Public, gcce_recipe(), prefix.path(), None)
+        .err()
+        .unwrap()
+        .to_string();
     assert!(e.contains("--source-code"), "{e}");
     let src = prefix.path().join("bin/g++");
     let e = Publication::new(
         Visibility::Private,
-        SDK,
         sdk_recipe(None),
         prefix.path(),
         Some(&src),
@@ -145,16 +122,10 @@ fn a_public_package_needs_its_source_code_and_a_private_one_takes_none() {
 fn a_proprietary_licence_is_never_published_to_the_public_bucket() {
     let sdk = sdk_tree();
     let src = sdk.path().join("epoc32/include/e32std.h");
-    let e = Publication::new(
-        Visibility::Public,
-        SDK,
-        sdk_recipe(None),
-        sdk.path(),
-        Some(&src),
-    )
-    .err()
-    .unwrap()
-    .to_string();
+    let e = Publication::new(Visibility::Public, sdk_recipe(None), sdk.path(), Some(&src))
+        .err()
+        .unwrap()
+        .to_string();
     assert!(
         e.contains("LicenseRef-Nokia-S60-SDK-EULA") && e.contains("private"),
         "{e}"
@@ -169,16 +140,9 @@ fn a_public_recipe_that_pins_a_sha256_is_checked_too() {
          sha256 = \"{}\"\n",
         "e".repeat(64)
     );
-    let recipe = Recipe::parse(&text, "r.toml").unwrap();
+    let recipe = Recipe::parse(&text, "r.toml", "gcce;12.1.0").unwrap();
     let src = prefix.path().join("bin/g++");
-    let p = Publication::new(
-        Visibility::Public,
-        "gcce;12.1.0",
-        recipe,
-        prefix.path(),
-        Some(&src),
-    )
-    .unwrap();
+    let p = Publication::new(Visibility::Public, recipe, prefix.path(), Some(&src)).unwrap();
     let e = run(&p, &Mode::DryRun(None)).0.unwrap_err().to_string();
     assert!(e.contains(&"e".repeat(64)), "{e}");
 }
