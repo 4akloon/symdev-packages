@@ -19,6 +19,15 @@ push or merge. symdev side: `~/worktrees/symdev/index-signing` (its
   `openssl pkeyutl -verify -rawin` with the embedded PEM: Verified; one byte appended:
   Failure. symdev (index-signing build) with a file:// mirror of it and `key = "builtin"`:
   lists gcce/rust-sdk/symdev; tampered or unsigned → warning naming the URL. Nothing uploaded.
+- install.sh (17770b4), CI + README (ea60a95).
+- Review (2026-10-03, no critical): fixed — sign-index signs an unsigned index only with
+  `--accept-unsigned <sha256 its dry run printed>`; an upload's key must be in symdev's
+  `TrustedKeys::builtin()` (`IndexKeys::new(signer, clients)`, upload prints the signer's
+  fingerprint); `Unsigned` in its own file; `Settings` Debug redacts; ObjectKey message;
+  install.sh: empty signature = malformed, separate `verifiable`, awk reads the body,
+  "does not verify with SYMDEV_INSTALL_PUBKEY" when overridden. cargo test 80 + 9,
+  install.sh test 73 ok (dash, bash). Open: the path dependency (lead → v0.2.0 tag), and CI
+  must run install.sh.test on ubuntu-24.04's OpenSSL 3.0 before the new install.sh ships.
 
 # WIP: release prep — branch `release-prep`
 

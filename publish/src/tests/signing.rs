@@ -1,7 +1,7 @@
 //! Every index `publish` writes is signed, and it extends only an index whose signature
 //! verifies (symdev spec §14).
 
-use symdev_sdk::{IndexSigningKey, SignedIndex};
+use symdev_sdk::{IndexSigningKey, SignedIndex, TrustedKeys};
 
 use super::fake_bucket::FakeBucket;
 use super::{SEED, upload_to};
@@ -36,7 +36,12 @@ fn publish_sdk(bucket: &FakeBucket, keys: &IndexKeys) -> Option<String> {
 #[test]
 fn an_upload_signs_the_index_it_writes() {
     let bucket = FakeBucket::start();
-    assert_eq!(publish_sdk(&bucket, &index_keys()), None);
+    let sdk = sdk_tree();
+    let p = private(sdk.path(), pinned_sdk_recipe(sdk.path()));
+    let (result, _, progress, _) = run_with(&p, &upload_to(&bucket, "private"), &index_keys());
+    result.unwrap();
+    let fingerprint = &signing_key().trusted().fingerprints()[0];
+    assert!(progress.contains(&fingerprint[..16]), "{progress}");
     let text = uploaded_text(&bucket);
     assert!(text.starts_with("# symdev-signature: ed25519 "), "{text}");
     SignedIndex::split(&text)
@@ -47,12 +52,37 @@ fn an_upload_signs_the_index_it_writes() {
 #[test]
 fn an_upload_without_the_signing_key_sends_nothing() {
     let bucket = FakeBucket::start();
-    let e = publish_sdk(&bucket, &IndexKeys::new(None)).unwrap();
+    let e = publish_sdk(&bucket, &IndexKeys::new(None, signing_key().trusted())).unwrap();
     assert!(
         e.contains("PUBLISH_SIGNING_KEY") && e.contains("--dry-run"),
         "{e}"
     );
     assert!(bucket.calls().is_empty(), "{:?}", bucket.calls());
+}
+
+/// A stale or mistyped key would sign an index every client refuses: an outage that the
+/// right key could not even repair, since it does not verify what the wrong one signed.
+#[test]
+fn an_upload_with_a_key_symdev_does_not_trust_sends_nothing() {
+    let bucket = FakeBucket::start();
+    let keys = IndexKeys::new(Some(signing_key()), TrustedKeys::builtin());
+    let e = publish_sdk(&bucket, &keys).unwrap();
+    let ours = &signing_key().trusted().fingerprints()[0];
+    let builtin = &TrustedKeys::builtin().fingerprints()[0];
+    assert!(e.starts_with("PUBLISH_SIGNING_KEY"), "{e}");
+    assert!(e.contains(&ours[..16]) && e.contains(&builtin[..16]), "{e}");
+    assert!(bucket.calls().is_empty(), "{:?}", bucket.calls());
+}
+
+#[test]
+fn a_dry_run_with_a_key_symdev_does_not_trust_says_so() {
+    let sdk = sdk_tree();
+    let p = private(sdk.path(), pinned_sdk_recipe(sdk.path()));
+    let keys = IndexKeys::new(Some(signing_key()), TrustedKeys::builtin());
+    let (result, out, progress, _) = run_with(&p, &Mode::DryRun(None), &keys);
+    result.unwrap();
+    assert!(SignedIndex::split(&out).is_signed());
+    assert!(progress.contains("not a key symdev trusts"), "{progress}");
 }
 
 #[test]
@@ -101,7 +131,8 @@ fn a_dry_run_signs_the_index_it_prints_when_the_key_is_set() {
 fn a_dry_run_without_the_key_prints_an_unsigned_index_and_says_so() {
     let sdk = sdk_tree();
     let p = private(sdk.path(), pinned_sdk_recipe(sdk.path()));
-    let (result, out, progress, _) = run_with(&p, &Mode::DryRun(None), &IndexKeys::new(None));
+    let keys = IndexKeys::new(None, signing_key().trusted());
+    let (result, out, progress, _) = run_with(&p, &Mode::DryRun(None), &keys);
     result.unwrap();
     assert!(!SignedIndex::split(&out).is_signed(), "{out}");
     assert!(

@@ -48,7 +48,7 @@ publish private <id> --from <dir> --recipe <recipe.toml> [--dry-run]
 publish public  <id> --from <prefix> --source-code <tar.gz> --recipe <recipe.toml> [--dry-run]
 publish file <path> --to <key> --bucket public|private --content-type <type> \
              --cache-control <value> [--dry-run]
-publish sign-index --bucket public|private [--dry-run]
+publish sign-index --bucket public|private [--accept-unsigned <sha256>] [--dry-run]
 ```
 
 `publish` packs the package reproducibly into `<sha256>.tar.gz` in the current directory,
@@ -60,14 +60,16 @@ write.
 Every index is signed (symdev spec §14): its first line is `# symdev-signature: ed25519
 <base64>`, the project key's Ed25519 signature of the rest, which symdev and `install.sh`
 check with the public key they carry. `publish` signs the index it writes with
-`PUBLISH_SIGNING_KEY` (an upload needs it; a dry run signs when it is set and says when it
-is not), and extends only an index whose signature verifies: one that does not is refused,
-and an unsigned one is refused by an upload (a dry run warns), since otherwise the next
-publish would sign whatever someone holding the bucket's R2 key wrote. `publish
-sign-index` signs the bucket's current index as it is, byte for byte, after checking that
-any signature it has verifies and that it parses, and lists its archives first; it is the
-one way to accept an unsigned index (the indexes published before 0.2.0), so read the list
-of a `--dry-run` before running it for real.
+`PUBLISH_SIGNING_KEY`: an upload needs it, and it must be a key symdev trusts (a stale or
+mistyped one would sign an index every client refuses); a dry run signs when it is set and
+says when it is not, or when symdev would not trust it. It extends only an index whose
+signature verifies: one that does not is refused, and an unsigned one is refused by an
+upload (a dry run warns), since otherwise the next publish would sign whatever someone
+holding the bucket's R2 key wrote. `publish sign-index` signs the bucket's current index as
+it is, byte for byte, after checking that any signature it has verifies and that it parses,
+and lists its archives first. It is the one way to accept an unsigned index (the indexes
+published before 0.2.0), and only for the exact bytes reviewed: its `--dry-run` prints the
+index's SHA-256, and the real run signs it only with `--accept-unsigned <that sha256>`.
 
 `publish file` puts one file as it is at a fixed key (`install.sh` at the public bucket's
 root), signed like the other uploads, with the two headers given; it neither reads nor

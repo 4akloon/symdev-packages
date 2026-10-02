@@ -11,6 +11,7 @@ mod object_key;
 mod publication;
 mod recipe;
 mod settings;
+mod unsigned;
 mod visibility;
 
 use std::fs;
@@ -85,6 +86,10 @@ enum Command {
         /// The bucket whose index to sign.
         #[arg(long, value_name = "bucket")]
         bucket: BucketName,
+        /// Sign an unsigned index: the SHA-256 its --dry-run printed, after you checked
+        /// every archive it lists. Only exactly those bytes are signed.
+        #[arg(long, value_name = "sha256")]
+        accept_unsigned: Option<String>,
         /// Read, check and print the signed index; upload nothing.
         #[arg(long)]
         dry_run: bool,
@@ -161,11 +166,16 @@ fn run(command: Command) -> Result<()> {
             &recipe,
             dry_run,
         ),
-        Command::SignIndex { bucket, dry_run } => {
+        Command::SignIndex {
+            bucket,
+            accept_unsigned,
+            dry_run,
+        } => {
             let settings = Settings::from_env();
             let mode = settings.mode(bucket.into(), dry_run)?;
             settings.index_keys(dry_run)?.resign(
                 &mode,
+                accept_unsigned.as_deref(),
                 &mut io::stdout().lock(),
                 &mut io::stderr().lock(),
             )

@@ -30,9 +30,10 @@ fn signing_key() -> IndexSigningKey {
     IndexSigningKey::from_base64(SEED).unwrap()
 }
 
-/// What a run with `PUBLISH_SIGNING_KEY` set to [`SEED`] signs and checks with.
+/// What a run with `PUBLISH_SIGNING_KEY` set to [`SEED`] signs and checks with, in a world
+/// where clients trust that key.
 fn index_keys() -> IndexKeys {
-    IndexKeys::new(Some(signing_key()))
+    IndexKeys::new(Some(signing_key()), signing_key().trusted())
 }
 
 fn keys() -> S3Keys {

@@ -1,12 +1,13 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use symdev_sdk::{ArchiveEntry, Index, IndexPackage, PackageId, Result, SdkError, SignedIndex};
+use symdev_sdk::{ArchiveEntry, Index, IndexPackage, PackageId, Result, SdkError};
 
 use crate::archive::Archive;
-use crate::index_keys::{IndexKeys, Unsigned};
+use crate::index_keys::IndexKeys;
 use crate::mode::Mode;
 use crate::recipe::Recipe;
+use crate::unsigned::Unsigned;
 use crate::visibility::Visibility;
 
 /// One package to publish: the recipe, the tree it is packed from, and for a public
@@ -124,18 +125,11 @@ impl Publication {
         let body = index.to_toml()?;
         match mode {
             Mode::DryRun(_) => {
-                let signed = keys.seal(&body);
+                let signed = keys.seal(&body, progress)?;
                 out.write_all(signed.to_text().as_bytes())
                     .map_err(|e| io_error("stdout", e))?;
                 for (key, _) in uploads {
                     say(progress, &format!("dry run: would upload {key}"))?;
-                }
-                if !signed.is_signed() {
-                    say(
-                        progress,
-                        "dry run: PUBLISH_SIGNING_KEY is not set, so the index printed above is \
-                         unsigned; an upload signs it",
-                    )?;
                 }
                 say(
                     progress,
@@ -155,7 +149,7 @@ impl Publication {
                     progress,
                     &format!("uploading {}…", bucket.url("index.toml")?),
                 )?;
-                bucket.put_index(&SignedIndex::sign(&body, keys.signer()?))?;
+                bucket.put_index(&keys.sign(&body, progress)?)?;
                 say(
                     progress,
                     &format!("published {} to {}", self.id, bucket.name()),

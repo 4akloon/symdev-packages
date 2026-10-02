@@ -1,13 +1,17 @@
 use symdev_sdk::{IndexSigningKey, Result, S3Keys, SdkError};
 
 use crate::bucket::Bucket;
+use std::fmt;
+
+use symdev_sdk::TrustedKeys;
+
 use crate::index_keys::IndexKeys;
 use crate::mode::Mode;
 use crate::visibility::Visibility;
 
 /// The publisher's environment: the buckets' S3 endpoints, the publisher key and the index
-/// signing key.
-#[derive(Clone, Debug, Default)]
+/// signing key. `Debug` shows the URLs and only whether each secret is set.
+#[derive(Clone, Default)]
 pub struct Settings {
     pub private_url: Option<String>,
     pub public_url: Option<String>,
@@ -36,17 +40,17 @@ impl Settings {
         }
     }
 
-    /// The keys that sign the indexes a run writes. An upload needs the signing key; a dry
-    /// run signs with it when it is set. A malformed key is an error even in a dry run,
-    /// and the error never shows its value.
+    /// The keys that sign the indexes a run writes, checked against the keys symdev
+    /// trusts. An upload needs the signing key; a dry run signs with it when it is set. A
+    /// malformed key is an error even in a dry run, and the error never shows its value.
     pub fn index_keys(&self, dry_run: bool) -> Result<IndexKeys> {
         match (&self.signing_key, dry_run) {
             (Some(text), _) => {
                 let key = IndexSigningKey::from_base64(text)
                     .map_err(|e| SdkError::Other(format!("{SIGNING_KEY}: {e}")))?;
-                Ok(IndexKeys::new(Some(key)))
+                Ok(IndexKeys::new(Some(key), TrustedKeys::builtin()))
             }
-            (None, true) => Ok(IndexKeys::new(None)),
+            (None, true) => Ok(IndexKeys::new(None, TrustedKeys::builtin())),
             (None, false) => Err(SdkError::Other(format!(
                 "{SIGNING_KEY} is not set; every index an upload writes is signed: set it to \
                  the project key's seed (base64, in the owner's ~/.config/symdev/keys.env and \
@@ -88,6 +92,19 @@ impl Settings {
     }
 }
 
+impl fmt::Debug for Settings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let set = |secret: &Option<String>| if secret.is_some() { "<set>" } else { "<unset>" };
+        f.debug_struct("Settings")
+            .field("private_url", &self.private_url)
+            .field("public_url", &self.public_url)
+            .field("access_key_id", &set(&self.access_key_id))
+            .field("secret_access_key", &set(&self.secret_access_key))
+            .field("signing_key", &set(&self.signing_key))
+            .finish()
+    }
+}
+
 fn half_a_key(missing: &str, set: &str) -> SdkError {
     SdkError::Other(format!(
         "{missing} is not set while {set} is; set both or neither"
@@ -120,11 +137,24 @@ mod tests {
         }
     }
 
+    /// The test seed is not the project key, so an upload with it is refused.
     #[test]
-    fn the_signing_key_signs_uploads_and_dry_runs() {
-        for dry_run in [false, true] {
-            assert!(all().index_keys(dry_run).unwrap().signer().is_ok());
+    fn the_signing_key_must_be_one_symdev_trusts() {
+        let e = match all().index_keys(false).unwrap().signer() {
+            Ok(_) => panic!("the test seed is not a key symdev trusts"),
+            Err(e) => e.to_string(),
+        };
+        assert!(e.starts_with("PUBLISH_SIGNING_KEY"), "{e}");
+        assert!(e.contains("bdf5345cc3ca8c30"), "names the trusted key: {e}");
+    }
+
+    #[test]
+    fn debug_hides_every_secret() {
+        let shown = format!("{:?}", all());
+        for value in [SEED, "\"secret\"", "AKID"] {
+            assert!(!shown.contains(value), "{value} in {shown}");
         }
+        assert!(shown.contains("symdev-private"), "{shown}");
     }
 
     #[test]

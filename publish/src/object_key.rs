@@ -7,7 +7,7 @@ use symdev_sdk::{Result, SdkError};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ObjectKey(String);
 
-/// The bucket's index, which only `publish public|private` writes (after reading it).
+/// The bucket's index, which only `publish public|private|sign-index` write, signed.
 const INDEX: &str = "index.toml";
 
 impl ObjectKey {
@@ -20,8 +20,9 @@ impl ObjectKey {
         let unreserved = |c: char| c.is_ascii_alphanumeric() || "-._~/".contains(c);
         if key == INDEX {
             return Err(SdkError::Other(format!(
-                "key `{INDEX}` is the bucket's index, which only `publish public` and \
-                 `publish private` write; upload the file under another key"
+                "key `{INDEX}` is the bucket's index, which only `publish public`, `publish \
+                 private` and `publish sign-index` write, signed; upload the file under another \
+                 key"
             )));
         }
         if key.is_empty() {

@@ -40,36 +40,42 @@ die() {
 # fixed 12-byte prefix (base64 MCowBQYDK2VwAyEA) and the 32 raw bytes.
 pem() { printf -- '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA%s\n-----END PUBLIC KEY-----\n' "$1" >"$2"; }
 
-# verify <file> <url>: checks the index's signature line against $keys; dies when it is
-# malformed, or, with OpenSSL 3, missing or not verifying.
+# verify <file> <url>: checks the index's signature line against $keys and writes the body
+# (the bytes after the line, or the whole file without one) to $tmp/index.body, which is
+# all that is read afterwards. Dies when the line is malformed, or, with OpenSSL 3, when it
+# is missing or does not verify.
 verify() {
   first=$(head -n 1 "$1")
+  signed=
   sig=
   case $first in
-    "# symdev-signature: ed25519 "*) sig=${first#"# symdev-signature: ed25519 "} ;;
+    "# symdev-signature: ed25519 "*) signed=1 sig=${first#"# symdev-signature: ed25519 "} ;;
     "# symdev-signature:"*) die "$2 has a malformed signature line (not ed25519); it may have been tampered with, so nothing was installed" ;;
   esac
-  if [ -n "$sig" ]; then
-    case $sig in *[!A-Za-z0-9+/=]*) die "$2 has a malformed signature line (not base64); it may have been tampered with, so nothing was installed" ;; esac
+  if [ -n "$signed" ]; then
+    case $sig in *[!A-Za-z0-9+/=]* | "") die "$2 has a malformed signature line (not base64); it may have been tampered with, so nothing was installed" ;; esac
     [ ${#sig} -eq 88 ] || die "$2 has a malformed signature line (not 64 bytes); it may have been tampered with, so nothing was installed"
+    tail -n +2 "$1" >"$tmp/index.body"
+  else
+    cp "$1" "$tmp/index.body"
   fi
   # OpenSSL 3 is what checks Ed25519 with -rawin. The probe loads the project key, never
   # SYMDEV_INSTALL_PUBKEY's, so a malformed override fails verification below instead of
   # turning it off.
-  version=
-  if command -v openssl >/dev/null 2>&1; then version=$(openssl version 2>/dev/null || true); fi
-  pem "$PROJECT_KEY" "$tmp/key.pem"
-  case $version in
-    "OpenSSL "[3-9].* | "OpenSSL "[1-9][0-9]*.*) openssl pkey -pubin -in "$tmp/key.pem" -noout >/dev/null 2>&1 || sig=unverifiable ;;
-    *) sig=unverifiable ;;
-  esac
-  if [ "$sig" = unverifiable ]; then
+  verifiable=
+  if command -v openssl >/dev/null 2>&1; then
+    case $(openssl version 2>/dev/null || true) in
+      "OpenSSL "[3-9].* | "OpenSSL "[1-9][0-9]*.*)
+        pem "$PROJECT_KEY" "$tmp/key.pem"
+        if openssl pkey -pubin -in "$tmp/key.pem" -noout >/dev/null 2>&1; then verifiable=1; fi ;;
+    esac
+  fi
+  if [ -z "$verifiable" ]; then
     warn "the index could not be verified: this needs OpenSSL 3 (openssl pkeyutl -rawin); the archive is still checked against the index's SHA-256 over HTTPS"
     return
   fi
-  [ -n "$sig" ] || die "$2 is unsigned (its first line is not '# symdev-signature: ed25519 …'); it may have been tampered with, so nothing was installed"
+  [ -n "$signed" ] || die "$2 is unsigned (its first line is not '# symdev-signature: ed25519 …'); it may have been tampered with, so nothing was installed"
   printf '%s' "$sig" | openssl base64 -d -A >"$tmp/index.sig" || die "$2: cannot decode its signature"
-  tail -n +2 "$1" >"$tmp/index.body"
   for key in $keys; do
     pem "$key" "$tmp/key.pem"
     if openssl pkeyutl -verify -pubin -inkey "$tmp/key.pem" -rawin -in "$tmp/index.body" \
@@ -78,7 +84,7 @@ verify() {
       return
     fi
   done
-  die "the signature of $2 does not verify with the project key: the index was tampered with after it was signed, or another key signed it, so nothing was installed"
+  die "the signature of $2 does not verify with $keyname: the index was tampered with after it was signed, or another key signed it, so nothing was installed"
 }
 
 main() {
@@ -86,6 +92,8 @@ main() {
   case $base in */) ;; *) base=$base/ ;; esac
 
   keys=${SYMDEV_INSTALL_PUBKEY:-$PROJECT_KEY}
+  keyname="the project key"
+  [ -z "${SYMDEV_INSTALL_PUBKEY:-}" ] || keyname=SYMDEV_INSTALL_PUBKEY
   for key in $keys; do
     case $key in
       *[!A-Za-z0-9+/=]* | *=*=) die "SYMDEV_INSTALL_PUBKEY: '$key' is not base64; give the base64 of 32-byte Ed25519 public keys, separated by spaces" ;;
@@ -156,7 +164,7 @@ main() {
       else if (archive && key == "size") size = value($0)
     }
     END { flush(); print "schema", schema }
-  ' "$tmp/index.toml" >"$tmp/archives" || die "cannot read $index"
+  ' "$tmp/index.body" >"$tmp/archives" || die "cannot read $index"
   schema=$(sed -n 's/^schema //p' "$tmp/archives")
   [ "$schema" = 1 ] ||
     die "$index has schema ${schema:-(none)}, which this install.sh does not read; download the current one from ${base}install.sh"

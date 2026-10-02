@@ -293,6 +293,15 @@ check "the all-zero key: does not verify" contains "$tmp/err" "does not verify"
 } >"$bucket/index.toml"
 refused "a malformed signature line is refused, even without OpenSSL 3" "$tmp/sig9" PATH="$old"
 check "the error says malformed" contains "$tmp/err" "malformed signature line"
+{
+  echo '# symdev-signature: ed25519 '
+  tail -n +2 "$tmp/index.good"
+} >"$bucket/index.toml"
+refused "an empty signature is malformed, even without OpenSSL 3" "$tmp/sig11" PATH="$old"
+check "empty: the error says malformed" contains "$tmp/err" "malformed signature line"
+cp "$tmp/index.good" "$bucket/index.toml"
+refused "an overriding key that did not sign is named as such" "$tmp/sig12" SYMDEV_INSTALL_PUBKEY="$other"
+check "the error names SYMDEV_INSTALL_PUBKEY, not the project key" contains "$tmp/err" "does not verify with SYMDEV_INSTALL_PUBKEY"
 cp "$tmp/index.good" "$bucket/index.toml"
 
 # --- busybox only: wget instead of curl, no flock --------------------------------------
