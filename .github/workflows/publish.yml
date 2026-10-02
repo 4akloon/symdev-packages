@@ -1,0 +1,64 @@
+# Merging a GCCE recipe into main is its release: build it (build.yml), then upload the
+# archive and its corresponding source to the public bucket, and the index last.
+#
+# Environment `publish` (main only) holds:
+#   variable PUBLISH_PUBLIC_URL   the public bucket's S3 endpoint,
+#                                 https://<account>.r2.cloudflarestorage.com/symdev-public/
+#   secrets  PUBLISH_ACCESS_KEY_ID, PUBLISH_SECRET_ACCESS_KEY   the publisher key
+#
+# publish refuses an id already in the index, so a changed recipe of a published version
+# fails here: a rebuild is a new version. Not runnable until build.yml is (see there).
+name: publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "recipes/gcce/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: publish
+    # The index is read, extended and written back: one publish at a time. (Actions keeps
+    # one run pending per group and cancels an older pending one; rerun it by hand.)
+    concurrency:
+      group: publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: gcce-build
+          path: ${{ runner.temp }}/gcce-build
+
+      - name: Unpack the prefix
+        run: tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/gcce-build/gcce-prefix.tar"
+
+      - name: Install Rust 1.98.1
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
+
+      - name: Publish gcce;12.1.0
+        env:
+          PUBLISH_PUBLIC_URL: ${{ vars.PUBLISH_PUBLIC_URL }}
+          PUBLISH_ACCESS_KEY_ID: ${{ secrets.PUBLISH_ACCESS_KEY_ID }}
+          PUBLISH_SECRET_ACCESS_KEY: ${{ secrets.PUBLISH_SECRET_ACCESS_KEY }}
+        run: |
+          cargo run --release --locked -p publish -- public 'gcce;12.1.0' \
+            --from "$RUNNER_TEMP/gcce" \
+            --source-code "$RUNNER_TEMP/gcce-build/gcce-12.1.0-source.tar.gz" \
+            --recipe recipes/gcce/12.1.0/recipe.toml

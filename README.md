@@ -55,3 +55,11 @@ The SDK is published by the owner from their own copy:
 cargo run --release -p publish -- private 'sdk;s60-3rd-fp2;1.1' \
   --from ~/sdk/S60_3rd_FP2 --recipe recipes/sdk/s60-3rd-fp2/1.1/recipe.toml
 ```
+
+## CI
+
+`build.yml` (pull requests) builds GCCE in a Debian 11 container and packs it with
+`publish public … --dry-run`; `publish.yml` (push to `main` under `recipes/gcce/`, or by
+hand) does the same and uploads. Settings: repository variable `PUBLIC_READ_URL` (the
+public bucket's r2.dev URL, read by dry runs); environment `publish` with variable
+`PUBLISH_PUBLIC_URL` and secrets `PUBLISH_ACCESS_KEY_ID`, `PUBLISH_SECRET_ACCESS_KEY`.

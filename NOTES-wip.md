@@ -11,7 +11,7 @@ Worktree `~/worktrees/symdev-packages/publish`. Do not touch `recipes/gcce/` or 
 |---|---|
 | E1 `publish` binary | done (35 tests) |
 | E2 SDK recipe + subset proof | done |
-| E3 workflows | not started |
+| E3 workflows | written, blocked: no Debian 11 apt list yet (experiment 107) |
 
 ## Facts
 
@@ -85,6 +85,34 @@ Worktree `~/worktrees/symdev-packages/publish`. Do not touch `recipes/gcce/` or 
   `mathlib.{h,cpp}` from `~/src/symdev-experiment-52`, `hello.cpp` printing
   `MathTwice(21)`/`MathAbs(-5)`.
 
+## E3 (2026-10-02)
+
+- Track C has not recorded the Debian 11 apt list: `main` of symdev-packages is still at
+  ca00929, tm-gcce's note ends "Next step: … experiment 107; Debian 11 apt list", and
+  experiment 107 is not in tm-gcce's backlog. So `build.yml`'s install step is a
+  `TODO … (not observed)` that exits 1; nothing guessed.
+- Design: job `gcce` in `container: debian:11` runs only build.sh (+ `g++ -v`, the
+  corresponding-source tarball from build.sh's SHA256SUMS + recipe + build.sh, and a tar of
+  `/opt/gcce` because artifacts lose modes and symlinks); job `pack` (build.yml) /
+  `publish` (publish.yml) runs `publish` on `ubuntu-24.04`, so the container needs no Rust
+  and no apt packages beyond experiment 107's. publish.yml calls build.yml
+  (`workflow_call`), then its `publish` job has `environment: publish` and
+  `concurrency: publish` (job level: only the index read-modify-write is serialised).
+- Configuration the owner sets: repo variable `PUBLIC_READ_URL` (r2.dev, for PR dry runs;
+  unset → empty index); environment `publish`: variable `PUBLISH_PUBLIC_URL` (S3 endpoint),
+  secrets `PUBLISH_ACCESS_KEY_ID`, `PUBLISH_SECRET_ACCESS_KEY`.
+- Action versions mirror symdev's ci.yml on toolchain-manager (checkout@v7,
+  upload-artifact@v5; download-artifact@v5 to match).
+- Checked locally: YAML parses (`python3 yaml.safe_load`; no actionlint on this host); the
+  source-pack shell snippet run on a mock work dir gives a correct tarball; `publish public
+  'gcce;12.1.0' --dry-run` on a scratch copy of Track C's relocated prefix
+  (`~/src/gcce-recipe/moved`, 201 MiB, 6 symlinks, 24 hard-linked files) → 72 365 105 bytes
+  in 8.5 s; `TarGz::extract` of it equals the prefix (`diff -r --no-dereference`), g++ runs.
+- Also blocked until R4: `cargo run --locked -p publish` needs symdev-sdk as a git dep.
+
 ## Next step
+
+E3: when Track C records the Debian 11 apt list (experiment 107), replace the TODO step in
+`.github/workflows/build.yml` with `apt-get update && apt-get install -y --no-install-recommends <list>`.
 
 E3: workflows; needs Track C's apt list (experiment 107) — check `recipes/gcce/12.1.0/` and the tm-gcce wip note.

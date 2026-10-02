@@ -1,0 +1,112 @@
+# Builds the GCCE recipe and packs gcce;12.1.0 the way publish.yml would, uploading nothing
+# to a bucket. Runs on pull requests that touch a recipe or the publisher, and as the first
+# half of publish.yml (workflow_call).
+#
+# Not runnable yet, on purpose:
+# - the Debian 11 build-dependency list is not recorded (symdev experiment 107, Track C);
+#   the install step fails with a TODO instead of a guessed package list;
+# - publish's symdev-sdk dependency is a local path until task R4 switches it to a git tag.
+name: build
+
+on:
+  pull_request:
+    paths:
+      - "recipes/**"
+      - "publish/**"
+      - "Cargo.lock"
+      - ".github/workflows/build.yml"
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # GCC and binutils are built on Debian 11 (glibc 2.31), so the package runs on
+  # Ubuntu 20.04+ / Debian 11+ (spec §6). Only the build runs in the container.
+  gcce:
+    runs-on: ubuntu-24.04
+    container: debian:11
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the build dependencies
+        # TODO: the Debian 11 apt list recorded in symdev experiment 107 (not observed yet).
+        run: |
+          echo "TODO: the Debian 11 build-dependency list (symdev experiment 107) is not recorded yet" >&2
+          exit 1
+
+      - name: Build GCCE into /opt/gcce
+        run: |
+          mkdir work
+          cd work
+          bash ../recipes/gcce/12.1.0/build.sh /opt/gcce
+
+      - name: Run the compiler where it was built
+        run: /opt/gcce/bin/arm-none-symbianelf-g++ -v
+
+      # GPL corresponding source: every [[source]] file build.sh fetched and checked (its
+      # SHA256SUMS), the recipe and build.sh.
+      - name: Pack the corresponding source
+        run: |
+          src=gcce-12.1.0-source
+          mkdir "$src"
+          awk '{ print $2 }' work/SHA256SUMS | while read -r file; do cp "work/$file" "$src/"; done
+          cp work/SHA256SUMS recipes/gcce/12.1.0/recipe.toml recipes/gcce/12.1.0/build.sh "$src/"
+          tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - "$src" \
+            | gzip -n -9 > "$src.tar.gz"
+
+      # An artifact does not keep file modes or symlinks; a tar does.
+      - name: Hand the prefix to the next job
+        run: tar -C /opt -cf gcce-prefix.tar gcce
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: gcce-build
+          path: |
+            gcce-prefix.tar
+            gcce-12.1.0-source.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  # Packs the package exactly as a publish would and checks it against the public index
+  # (refused if the id is already there). Needs no key: PUBLIC_READ_URL is the public
+  # bucket's r2.dev URL; unset, the dry run starts from an empty index.
+  pack:
+    needs: gcce
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: gcce-build
+          path: ${{ runner.temp }}/gcce-build
+
+      - name: Unpack the prefix
+        run: tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/gcce-build/gcce-prefix.tar"
+
+      # Pinned like symdev's CI (workspace rust-version); bump both together.
+      - name: Install Rust 1.98.1
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
+
+      - name: Pack gcce;12.1.0 (dry run)
+        env:
+          PUBLISH_PUBLIC_URL: ${{ vars.PUBLIC_READ_URL }}
+        run: |
+          cargo run --release --locked -p publish -- public 'gcce;12.1.0' \
+            --from "$RUNNER_TEMP/gcce" \
+            --source-code "$RUNNER_TEMP/gcce-build/gcce-12.1.0-source.tar.gz" \
+            --recipe recipes/gcce/12.1.0/recipe.toml --dry-run
+
+      # publish writes <sha256>.tar.gz into the working directory.
+      - uses: actions/upload-artifact@v5
+        with:
+          name: gcce-package
+          path: "*.tar.gz"
+          if-no-files-found: error
+          retention-days: 7
