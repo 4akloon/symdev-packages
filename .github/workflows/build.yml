@@ -41,7 +41,7 @@ jobs:
             perl-podlators tar gzip git diffutils findutils file
           ! rpm -q libzstd-devel
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Build GCCE into /opt/gcce
         run: |
@@ -69,7 +69,7 @@ jobs:
       - name: Hand the prefix to the next job
         run: tar -C /opt -cf gcce-prefix.tar gcce
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: gcce-build
           path: |
@@ -85,9 +85,9 @@ jobs:
     needs: gcce
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           name: gcce-build
           path: ${{ runner.temp }}/gcce-build
@@ -111,7 +111,7 @@ jobs:
             --recipe recipes/gcce/12.1.0/recipe.toml --dry-run
 
       # publish writes <sha256>.tar.gz into the working directory.
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: gcce-package
           path: "*.tar.gz"

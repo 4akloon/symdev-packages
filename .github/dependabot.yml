@@ -1,0 +1,15 @@
+# Keeps the publisher's crates and the pinned GitHub actions current. Actions are pinned to
+# commit SHAs (the repository requires it); Dependabot moves the SHA and the version comment.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      cargo-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
