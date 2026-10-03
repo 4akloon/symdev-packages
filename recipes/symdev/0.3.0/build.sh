@@ -77,6 +77,10 @@ for entry in $(git -C "$src" ls-tree --name-only "$tag" symbian-rs/); do
   grep -qF "\"$entry\"" "$recipe" ||
     fail "$tag has $entry, which the rust-sdk include list of $recipe does not name; add it"
 done
+# symbian-rs/prebuilt is in that list as prebuilt.sh's output, never the tag's: what a tag
+# tracked there would be shipped mixed with the objects prebuilt.sh compiles.
+[ -z "$(git -C "$src" ls-tree --name-only "$tag" symbian-rs/prebuilt)" ] ||
+  fail "$tag tracks symbian-rs/prebuilt, which prebuilt.sh writes; remove it from the tag's tree"
 
 # --- static binary ---------------------------------------------------------------------
 rustc -vV
