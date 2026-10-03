@@ -13,7 +13,7 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
 | design: crate `pkgtools` | decided (below) |
 | notices | todo |
 | runtime-closure | done: 12 tests = the Python's 12; real maps identical (see Facts) |
-| sdk-casefold | todo |
+| sdk-casefold | done: 6 tests = the Python's 6 (+ mutation: last-wins tie fails); real SDK identical |
 | sdk-free | todo |
 | target2-abs32 | todo (symdev's API not in rl-driver yet: 22c840a has notes only) |
 | serve (install test) | todo |
@@ -47,6 +47,13 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
   identical for the shipped four (exit 0), three (exit 1), five (exit 1), a file without
   the section (exit 1), all 14 members of the map as the set (every inclusion printed),
   and prebuilt.map (exit 1). (A `2>&1` diff only shows Python's buffered stdout order.)
+- sdk-casefold equivalence (`~/src/pkgtools-scratch/casefold/`): the rehearsal SDK's
+  epoc32/include (`~/src/rl-shims-scratch/home/sdk/s60-3rd-fp2/1.1`), Python vs
+  `pkgtools sdk-casefold`: 260 links, the `find` listing of both overlays (type + path),
+  every link target and the marker identical; the same 260 links (targets relative to
+  epoc32/include) as the overlays symdev's own `SdkIncludeCaseFold` built in
+  examples/{gui,hello} and symbian-rs/examples/ui. Shared walker `TreeWalk` = os.walk with
+  sorted names, but an unreadable directory is an error (os.walk skips it silently).
 
 ## Dead ends
 
