@@ -4,8 +4,9 @@
 #   build.sh <out-dir>
 #
 # Runs in the current directory: clones recipe.toml's `git` at `tag` into ./symdev, checks
-# that the tag's workspace version is the version of the recipe's ids, builds a static
-# x86_64 musl binary and fails unless it is static. Writes into <out-dir>:
+# that the tag is the recipe's `commit` and that the tag's workspace version is the version
+# of the recipe's ids, builds a static x86_64 musl binary and fails unless it is static.
+# Writes into <out-dir>:
 #
 #   symdev/                       bin/symdev, and share/doc/symdev/ with LICENSE and
 #                                 THIRD-PARTY-NOTICES.txt (tools/third_party_notices.py of
@@ -50,6 +51,12 @@ top() {
 git_url=$(top git)
 tag=$(top tag)
 [ -n "$git_url" ] && [ -n "$tag" ] || fail "$recipe names no git and tag"
+# The commit the tag must be: the recipe does not trust the tag alone.
+pinned_commit=$(top commit)
+[ "$pinned_commit" != 0000000000000000000000000000000000000000 ] ||
+  fail "$recipe: commit not set — fill it in at release (git rev-parse $tag^{commit})"
+printf '%s\n' "$pinned_commit" | grep -qx '[0-9a-f]\{40\}' ||
+  fail "$recipe: commit '$pinned_commit' is not the 40 lowercase hex digits of $tag's commit"
 
 # The version every id of the recipe carries: `symdev;<ver>` and `rust-sdk;<ver>`.
 version=$(sed -n 's/^id = "symdev;\(.*\)"$/\1/p' "$recipe")
@@ -65,6 +72,8 @@ git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$tag" "$git_u
 commit=$(git -C "$src" rev-parse HEAD)
 [ "$(git -C "$src" rev-parse "refs/tags/$tag^{commit}")" = "$commit" ] ||
   fail "$tag in $git_url is not a tag"
+[ "$commit" = "$pinned_commit" ] ||
+  fail "$tag in $git_url is commit $commit, but $recipe pins commit $pinned_commit"
 workspace=$(awk '/^\[/ { section = $0 } section == "[workspace.package]" &&
   $1 == "version" { v = $3; gsub(/"/, "", v); print v; exit }' "$src/Cargo.toml")
 [ "$workspace" = "$version" ] ||

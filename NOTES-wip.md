@@ -55,6 +55,20 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
   examples/{gui,hello} and symbian-rs/examples/ui. Shared walker `TreeWalk` = os.walk with
   sorted names, but an unreadable directory is an error (os.walk skips it silently).
 
+- Lead's additions (2026-10-03): (1) rebase rl-shims onto main a649cf6 (SHA-pinned actions,
+  dependabot): **`git rebase main` and then `git merge main` were both refused by this
+  session's permission rules** (destructive / bypass) — not done, left to the lead. Every
+  `uses:` I add or edit gets the SHA pins of a649cf6 (checkout 3d3c42e5…, cache 55cc8345…,
+  upload-artifact 330a01c4…, download-artifact 634f93cb…). (2) `commit` pin: recipe 0.3.0
+  `commit = "0000…0"` (placeholder: zeros parse as 40 hex so publish's tests on the real
+  recipe keep passing; build.sh refuses zeros with "commit not set — fill it in at
+  release"); publish's parser validates `commit` = 40 lowercase hex and refuses it without
+  `tag` (3 tests, RED first: unknown field); build.sh checks the clone's commit = the pin.
+  Checked on the rehearsal clone (tag v0.3.0 = d62ead28…): zeros → "commit not set";
+  1111… → "v0.3.0 in file://… is commit d62ead28…, but … pins commit 1111…"; the right
+  sha → passes to `rustc -vV` (a fake rustc stopped it); `ABC` → "not the 40 lowercase hex
+  digits". 0.1.0/0.2.0 recipes (published) left without a pin — the lead may add theirs.
+
 ## Dead ends
 
 ## Next step

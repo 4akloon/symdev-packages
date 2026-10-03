@@ -42,6 +42,7 @@ tests/                                   # install.sh.test, the Python tools' te
 | `sha256` | the archive's hash; required for `private`, checked whenever present |
 | `build`, `[[source]]` | the build script and its pinned sources (read by `build.sh` and CI) |
 | `git`, `tag` | a source tree instead of tarballs: the repository and the tag `build.sh` checks out |
+| `commit` | with `git` and `tag`: the 40 lowercase hex digits of the commit the tag must be; `build.sh` fails unless the clone is that commit (from 0.3.0; all zeros = not set yet, which `build.sh` refuses) |
 
 A build that makes several packages (the symdev release makes `symdev` and `rust-sdk` from
 one tag) keeps `git`, `tag`, `build` and `[[source]]` at the top and gives each package a

@@ -7,10 +7,14 @@
 # The tag v0.3.0 does not exist yet (2026-10-03): until it does, build.sh stops at the clone.
 # The version is provisional: the first symdev whose symrs_avkon.cpp takes its UID3 from
 # `symrs_uid3` (symdev branch rl-shims); rename this directory if that release is another.
-# build.sh reads `git` and `tag`, and checks that the tag's workspace version is the version
-# in the ids below.
+# build.sh reads `git`, `tag` and `commit`, checks that the tag is the commit `commit` names
+# (symdev's v* tags cannot be moved, but the recipe does not trust the tag alone) and that
+# the tag's workspace version is the version in the ids below.
 git = "https://github.com/4akloon/symdev"
 tag = "v0.3.0"
+# PLACEHOLDER, all zeros = not set: fill in `git rev-parse v0.3.0^{commit}` at the release.
+# Until then build.sh fails with "commit not set — fill it in at release".
+commit = "0000000000000000000000000000000000000000"
 build = "build.sh"
 
 # bin/symdev, static (x86_64-unknown-linux-musl), so it runs on any x86_64 Linux whatever

@@ -29,7 +29,7 @@ impl Recipe {
     pub fn parse(text: &str, path_for_errors: &str, id: &str) -> Result<Recipe> {
         let wanted = PackageId::parse(id)?;
         let bad = |detail: String| SdkError::Other(format!("recipe {path_for_errors}: {detail}"));
-        let all = PackageKeys::all_in(text).map_err(|e| bad(e.to_string()))?;
+        let all = PackageKeys::all_in(text).map_err(bad)?;
         let recipes = all
             .into_iter()
             .map(|keys| Self::checked(keys, path_for_errors).map_err(bad))
