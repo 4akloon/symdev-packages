@@ -10,7 +10,7 @@ publish = false
 # TEMPORARY (G2, branch index-signing): symdev's index-signing worktree, for `SignedIndex`;
 # the lead switches this back to `git = "https://github.com/4akloon/symdev", tag = "v0.2.0"`
 # at the release. CI cannot build this line.
-symdev-sdk = { path = "/home/genius/worktrees/symdev/index-signing/crates/symdev-sdk" }
+symdev-sdk = { git = "https://github.com/4akloon/symdev", tag = "v0.2.0" }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 toml = "1"

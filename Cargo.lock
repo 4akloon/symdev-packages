@@ -678,14 +678,16 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "symdev-core"
-version = "0.1.0"
+version = "0.2.0"
+source = "git+https://github.com/4akloon/symdev?tag=v0.2.0#7ca94bbae7d8262fb3b6029c7a0077bdc2929d1a"
 dependencies = [
  "thiserror",
 ]
 
 [[package]]
 name = "symdev-manifest"
-version = "0.1.0"
+version = "0.2.0"
+source = "git+https://github.com/4akloon/symdev?tag=v0.2.0#7ca94bbae7d8262fb3b6029c7a0077bdc2929d1a"
 dependencies = [
  "serde",
  "thiserror",
@@ -694,7 +696,8 @@ dependencies = [
 
 [[package]]
 name = "symdev-sdk"
-version = "0.1.0"
+version = "0.2.0"
+source = "git+https://github.com/4akloon/symdev?tag=v0.2.0#7ca94bbae7d8262fb3b6029c7a0077bdc2929d1a"
 dependencies = [
  "base64",
  "ed25519-dalek",
