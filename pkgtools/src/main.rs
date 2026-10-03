@@ -5,6 +5,7 @@
 mod ar_archive;
 mod casefold;
 mod closure;
+mod notices;
 mod py_path;
 mod py_text;
 mod sdk_free;
@@ -20,6 +21,7 @@ use clap::{Parser, Subcommand};
 
 use crate::casefold::IncludeOverlay;
 use crate::closure::ClosureTool;
+use crate::notices::NoticesTool;
 use crate::sdk_free::SdkFreeTool;
 use crate::target2::Target2Tool;
 
@@ -32,6 +34,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Write THIRD-PARTY-NOTICES.txt for a static binary: every crate `cargo metadata
+    /// --filter-platform <target>` resolves from <package> through normal dependencies (but
+    /// the workspace's own), the code they bundle, and the Rust toolchain's runtime. Needs
+    /// cargo and rustc.
+    Notices {
+        /// The checkout's Cargo.toml.
+        #[arg(long, value_name = "Cargo.toml")]
+        manifest_path: PathBuf,
+        /// The binary's package, e.g. symdev-cli.
+        #[arg(long)]
+        package: String,
+        /// e.g. x86_64-unknown-linux-musl.
+        #[arg(long)]
+        target: String,
+        #[arg(long, value_name = "file")]
+        output: PathBuf,
+    },
     /// Fail unless the GCC runtime members a GNU ld link map took are exactly the shipped
     /// ones (prebuilt.sh, step 4); prints each member taken and why.
     RuntimeClosure {
@@ -73,6 +92,19 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     let (mut out, mut err) = (io::stdout().lock(), io::stderr().lock());
     let code = match cli.command {
+        Command::Notices {
+            manifest_path,
+            package,
+            target,
+            output,
+        } => NoticesTool::run(
+            &manifest_path,
+            &package,
+            &target,
+            &output,
+            &mut out,
+            &mut err,
+        ),
         Command::RuntimeClosure { map, shipped } => {
             ClosureTool::run(&map, &shipped, &mut out, &mut err)
         }

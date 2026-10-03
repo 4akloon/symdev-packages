@@ -10,24 +10,41 @@ use super::sysroot::sysroot;
 fn the_musl_runtime_is_recorded_from_the_toolchain_files() {
     let tmp = tempfile::tempdir().unwrap();
     let root = sysroot(tmp.path(), "h1-libunwind.o");
-    let entries = Toolchain::new(&root, TARGET, "rustc 1.98.1 (x 2026-09-01)").entries().unwrap();
-    let [std, musl, llvm] = &entries[..] else { panic!("{} entries", entries.len()) };
+    let entries = Toolchain::new(&root, TARGET, "rustc 1.98.1 (x 2026-09-01)")
+        .entries()
+        .unwrap();
+    let [std, musl, llvm] = &entries[..] else {
+        panic!("{} entries", entries.len())
+    };
     assert!(std.title.contains("Rust standard library"));
-    let [(name, text)] = &std.files[..] else { panic!("{:?}", std.files) };
+    let [(name, text)] = &std.files[..] else {
+        panic!("{:?}", std.files)
+    };
     assert_eq!(name, "share/doc/rust/COPYRIGHT-library.html (as text)");
     assert!(text.contains("Licensed under Apache & MIT."), "{text}");
-    assert_eq!(text.matches("Copyright notices for The Rust Standard Library").count(), 1);
+    assert_eq!(
+        text.matches("Copyright notices for The Rust Standard Library")
+            .count(),
+        1
+    );
     assert!(text.contains("\nThe MIT License (MIT)\n\n    Copyright (c) 2015 Someone <a@b>\n"));
-    assert_eq!((musl.title.as_str(), musl.license.as_str()), ("musl libc 1.2.5", "MIT"));
-    let [(name, text)] = &musl.files[..] else { panic!("{:?}", musl.files) };
+    assert_eq!(
+        (musl.title.as_str(), musl.license.as_str()),
+        ("musl libc 1.2.5", "MIT")
+    );
+    let [(name, text)] = &musl.files[..] else {
+        panic!("{:?}", musl.files)
+    };
     assert_eq!(name, "musl-1.2.5/COPYRIGHT");
     assert!(text.contains("musl as a whole is licensed under the following standard MIT"));
     assert!(musl.note.contains("SOURCE"));
     assert_eq!(llvm.license, "Apache-2.0 WITH LLVM-exception AND NCSA");
     let names: Vec<&str> = llvm.files.iter().map(|(n, _)| n.as_str()).collect();
     let licences = ["Apache-2.0", "LLVM-exception", "NCSA"];
-    let expected: Vec<String> =
-        licences.iter().map(|s| format!("share/doc/rust/licenses/{s}.txt")).collect();
+    let expected: Vec<String> = licences
+        .iter()
+        .map(|s| format!("share/doc/rust/licenses/{s}.txt"))
+        .collect();
     assert_eq!(names[1..], expected);
     let entry = &llvm.files[0].1;
     assert!(entry.contains("University of Illinois"));
@@ -48,13 +65,20 @@ fn a_runtime_other_than_the_one_observed_is_an_error() {
 fn a_musl_version_without_its_copyright_is_an_error() {
     let tmp = tempfile::tempdir().unwrap();
     let root = sysroot(tmp.path(), "h1-libunwind.o");
-    let libc = root.join("lib/rustlib").join(TARGET).join("lib/self-contained/libc.a");
+    let libc = root
+        .join("lib/rustlib")
+        .join(TARGET)
+        .join("lib/self-contained/libc.a");
     let bytes = fs::read(&libc).unwrap();
     let at = bytes.windows(5).position(|w| w == b"1.2.5").unwrap();
     let mut changed = bytes.clone();
     changed[at..at + 5].copy_from_slice(b"9.9.9");
     fs::write(&libc, changed).unwrap();
-    let error = Toolchain::new(&root, TARGET, "rustc").entries().err().unwrap().to_string();
+    let error = Toolchain::new(&root, TARGET, "rustc")
+        .entries()
+        .err()
+        .unwrap()
+        .to_string();
     assert!(error.contains("musl 9.9.9's COPYRIGHT"), "{error}");
 }
 
