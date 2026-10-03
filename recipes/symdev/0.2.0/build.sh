@@ -8,8 +8,8 @@
 # x86_64 musl binary and fails unless it is static. Writes into <out-dir>:
 #
 #   symdev/                       bin/symdev, and share/doc/symdev/ with LICENSE and
-#                                 THIRD-PARTY-NOTICES.txt (tools/third_party_notices.py of
-#                                 this repository: what the static binary links), for
+#                                 THIRD-PARTY-NOTICES.txt (`pkgtools notices` of this
+#                                 repository: what the static binary links), for
 #                                 publish public 'symdev;<ver>' --from <out-dir>/symdev
 #   rust-sdk/                     the tag's tree (git archive); recipe.toml's include list
 #                                 takes the Rust SDK out of it, for
@@ -17,8 +17,9 @@
 #   symdev-<ver>-source.tar.gz    git archive of the tag: both packages' --source-code
 #
 # Needs git, cargo with the x86_64-unknown-linux-musl target, a musl C compiler for ring
-# and libz-sys (cc-rs finds musl-gcc, Debian/Ubuntu package musl-tools), file, ldd, python3
-# and ar. Runs from its place in the repository (it calls ../../../tools/).
+# and libz-sys (cc-rs finds musl-gcc, Debian/Ubuntu package musl-tools), file and ldd, and
+# PKGTOOLS, the path of this repository's pkgtools binary (cargo build --release --locked -p
+# pkgtools: target/release/pkgtools).
 # CARGO_TARGET_DIR is honoured.
 set -euo pipefail
 
@@ -29,7 +30,6 @@ fi
 mkdir -p "$1"
 out=$(cd "$1" && pwd)
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-notices=$here/../../../tools/third_party_notices.py
 recipe=$here/recipe.toml
 target=x86_64-unknown-linux-musl
 
@@ -37,6 +37,11 @@ fail() {
   echo "error: $*" >&2
   exit 1
 }
+
+# This repository's pkgtools: a path, or a command on PATH.
+pkgtools=$(command -v "${PKGTOOLS:-}" 2>/dev/null || true)
+[ -n "${PKGTOOLS:-}" ] && [ -n "$pkgtools" ] ||
+  fail "PKGTOOLS='${PKGTOOLS:-}' is not this repository's pkgtools binary; build it with cargo build --release --locked -p pkgtools and set PKGTOOLS=<repository>/target/release/pkgtools"
 
 # `key = "value"` at the top of recipe.toml (before the first table).
 top() {
@@ -115,7 +120,7 @@ chmod 0755 "$out/symdev/bin/symdev"
 doc=$out/symdev/share/doc/symdev
 mkdir -p "$doc"
 cp "$src/LICENSE" "$doc/LICENSE"
-python3 "$notices" --manifest-path "$src/Cargo.toml" --package symdev-cli --target "$target" \
+"$pkgtools" notices --manifest-path "$src/Cargo.toml" --package symdev-cli --target "$target" \
   --output "$doc/THIRD-PARTY-NOTICES.txt" || fail "cannot write $doc/THIRD-PARTY-NOTICES.txt"
 git -C "$src" archive "$tag" | tar -x -C "$out/rust-sdk"
 git -C "$src" archive --format=tar.gz --prefix="symdev-$version/" \

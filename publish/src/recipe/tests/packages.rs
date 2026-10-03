@@ -167,3 +167,34 @@ fn the_rust_sdk_keeps_the_repository_layout_without_corpus_or_build_output() {
         ]
     );
 }
+
+/// [`TWO`] with the commit its tag must point at.
+fn pinned(commit: &str) -> String {
+    let tag = "tag = \"v0.1.0\"\n";
+    TWO.replacen(tag, &format!("{tag}commit = \"{commit}\"\n"), 1)
+}
+
+#[test]
+fn a_commit_of_40_lowercase_hex_digits_pins_the_tag() {
+    let sha = "0123456789abcdef0123456789abcdef01234567";
+    let symdev = Recipe::parse(&pinned(sha), PATH, "symdev;0.1.0").unwrap();
+    assert_eq!(symdev.id().as_str(), "symdev;0.1.0");
+}
+
+#[test]
+fn a_commit_that_is_not_40_lowercase_hex_digits_is_refused_naming_it() {
+    let upper = "0123456789ABCDEF0123456789abcdef01234567";
+    for bad in [upper, "0123456789abcdef", "v0.1.0", ""] {
+        let e = error(&pinned(bad), "symdev;0.1.0");
+        let said = format!("commit `{bad}` is not 40 lowercase hex digits");
+        assert!(e.contains(&said) && e.contains(PATH), "{e}");
+    }
+}
+
+#[test]
+fn a_commit_without_a_tag_is_refused() {
+    let text = "commit = \"0123456789abcdef0123456789abcdef01234567\"\n\
+                id = \"gcce;12.1.0\"\nlicense = \"GPL-3.0-or-later\"\nhost = \"x86_64-linux\"\n";
+    let e = error(text, "gcce;12.1.0");
+    assert!(e.contains("`commit` pins the commit of `tag`"), "{e}");
+}

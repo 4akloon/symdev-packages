@@ -8,6 +8,7 @@ use symdev_sdk::{Host, TarGz};
 use super::Recipe;
 
 mod packages;
+mod prebuilt;
 
 const SDK: &str = "sdk;s60-3rd-fp2;1.1";
 const SHA: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";

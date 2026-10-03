@@ -1,7 +1,9 @@
 # The repository's own tests, on every change to what they cover: tests/install.sh.test
-# (install.sh against a fake bucket that `python3 -m http.server` serves on 127.0.0.1, with
-# an index written by `publish --dry-run`), the notices generator's unit tests, and the
-# publisher's cargo tests. Hermetic: no bucket, no secret, nothing leaves the runner.
+# (install.sh against a fake bucket that `pkgtools serve` serves on 127.0.0.1, with an index
+# written by `publish --dry-run`), and the cargo tests of the publisher (some read the real
+# recipes) and of pkgtools (the notices generator, and the TARGET2 rewrite, runtime closure,
+# case-fold and SDK checks that the recipes' scripts and symdev.yml use). Hermetic: no
+# bucket, no secret, nothing leaves the runner.
 name: tests
 
 on:
@@ -10,7 +12,9 @@ on:
       - "install.sh"
       - "tests/**"
       - "tools/**"
+      - "recipes/**"
       - "publish/**"
+      - "pkgtools/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/tests.yml"
@@ -20,7 +24,9 @@ on:
       - "install.sh"
       - "tests/**"
       - "tools/**"
+      - "recipes/**"
       - "publish/**"
+      - "pkgtools/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/tests.yml"
@@ -37,14 +43,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # install.sh.test needs python3 (the fake bucket) and openssl 3 (index signatures), and
-      # runs install.sh with dash; with busybox it also runs it in a PATH of busybox applets
-      # (wget instead of curl, no flock, no openssl). Only what this runner image lacks is
-      # installed.
+      # install.sh.test needs openssl 3 (index signatures) and curl, and runs install.sh with
+      # dash; with busybox it also runs it in a PATH of busybox applets (wget instead of curl,
+      # no flock, no openssl). pkgtools' tests make their fixture archives with ar (binutils).
+      # Only what this runner image lacks is installed.
       - name: Install what the tests need
         run: |
           missing=
-          for tool in python3 dash busybox curl ar openssl; do
+          for tool in dash busybox curl ar openssl; do
             command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
           done
           echo "missing:${missing:- none}"
@@ -60,7 +66,7 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal
           rustup default 1.98.1
 
-      - name: Publisher tests
+      - name: Publisher and pkgtools tests
         run: cargo test --locked
 
       - name: install.sh under dash
@@ -68,6 +74,3 @@ jobs:
 
       - name: install.sh under bash
         run: sh tests/install.sh.test "$(command -v bash)"
-
-      - name: Notices generator tests
-        run: python3 -m unittest discover -s tests -p '*_test.py' -v

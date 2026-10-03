@@ -424,6 +424,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
+name = "memchr"
+version = "2.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
+
+[[package]]
 name = "miniz_oxide"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -459,6 +465,19 @@ checksum = "f950b2377845cebe5cf8b5165cb3cc1a5e0fa5cfa3e1f7f55707d8fd82e0a7b7"
 dependencies = [
  "der",
  "spki",
+]
+
+[[package]]
+name = "pkgtools"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "flate2",
+ "serde_json",
+ "sha2",
+ "symdev-elf2e32",
+ "tar",
+ "tempfile",
 ]
 
 [[package]]
@@ -614,6 +633,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_json"
+version = "1.0.151"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
+dependencies = [
+ "itoa",
+ "memchr",
+ "serde",
+ "serde_core",
+ "zmij",
+]
+
+[[package]]
 name = "serde_spanned"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -678,16 +710,25 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "symdev-core"
-version = "0.2.0"
-source = "git+https://github.com/4akloon/symdev?tag=v0.2.0#7ca94bbae7d8262fb3b6029c7a0077bdc2929d1a"
+version = "0.3.0"
+source = "git+https://github.com/4akloon/symdev?tag=v0.3.0#6b2c92046819a0710168b8b649ebbce4f1451731"
 dependencies = [
  "thiserror",
 ]
 
 [[package]]
+name = "symdev-elf2e32"
+version = "0.3.0"
+source = "git+https://github.com/4akloon/symdev?tag=v0.3.0#6b2c92046819a0710168b8b649ebbce4f1451731"
+dependencies = [
+ "symdev-core",
+ "symdev-uidcrc",
+]
+
+[[package]]
 name = "symdev-manifest"
-version = "0.2.0"
-source = "git+https://github.com/4akloon/symdev?tag=v0.2.0#7ca94bbae7d8262fb3b6029c7a0077bdc2929d1a"
+version = "0.3.0"
+source = "git+https://github.com/4akloon/symdev?tag=v0.3.0#6b2c92046819a0710168b8b649ebbce4f1451731"
 dependencies = [
  "serde",
  "thiserror",
@@ -696,8 +737,8 @@ dependencies = [
 
 [[package]]
 name = "symdev-sdk"
-version = "0.2.0"
-source = "git+https://github.com/4akloon/symdev?tag=v0.2.0#7ca94bbae7d8262fb3b6029c7a0077bdc2929d1a"
+version = "0.3.0"
+source = "git+https://github.com/4akloon/symdev?tag=v0.3.0#6b2c92046819a0710168b8b649ebbce4f1451731"
 dependencies = [
  "base64",
  "ed25519-dalek",
@@ -713,6 +754,11 @@ dependencies = [
  "ureq",
  "zeroize",
 ]
+
+[[package]]
+name = "symdev-uidcrc"
+version = "0.3.0"
+source = "git+https://github.com/4akloon/symdev?tag=v0.3.0#6b2c92046819a0710168b8b649ebbce4f1451731"
 
 [[package]]
 name = "syn"
@@ -1013,3 +1059,9 @@ name = "zlib-rs"
 version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b268e58e7c693d7c271f93ffc4ba3b380412554231c85bf61ca7af91042a4112"
+
+[[package]]
+name = "zmij"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"

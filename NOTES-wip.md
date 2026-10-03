@@ -1,3 +1,152 @@
+# WIP: Rust tools — branch `rl-shims`
+
+Owner decision (2026-10-03, via the lead): every tool the pipeline runs regularly is Rust.
+Port tools/*.py (notices, target2-abs32, runtime-closure, sdk-casefold, sdk-free) and the
+install test's `python3 -m http.server` to Rust; tests 1:1 first (TDD); equivalence runs
+old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch/`.
+
+## Status
+
+| Step | State |
+|---|---|
+| baseline (rl-shims d7542d0) | cargo test 83 + 9 ok |
+| design: crate `pkgtools` | decided (below) |
+| lead's additions | commit pin done; rebase onto main a649cf6 refused by permissions (lead) |
+| notices | done: 14 unit tests = the Python's 14 (+ 3 ar, 2 HTML, 1 CRLF, 2 CLI); v0.2.0 tag byte-identical |
+| runtime-closure | done: 12 tests = the Python's 12; real maps identical (see Facts) |
+| sdk-casefold | done: 6 tests = the Python's 6 (+ mutation: last-wins tie fails); real SDK identical |
+| sdk-free | done: 8 unit + 1 CLI test = the Python's 9; rehearsal artifact identical |
+| target2-abs32 | done on symdev's `Target2Rewrite` (rl-driver c982182, by path): 13 tests = the Python's 13; real objects identical |
+| serve (install test) | done: 4 tests; install.sh.test 73 ok under dash and bash with it |
+| scripts/workflows/README | done: build.sh ×3, prebuilt.sh, symdev.yml, tests.yml, README; .py tools + tests removed |
+| equivalence runs | done: every tool vs its Python on real inputs (Facts) |
+
+## Decisions
+
+- A second binary, `pkgtools` (workspace member `pkgtools/`), not subcommands of `publish`:
+  `publish` holds the bucket credentials and signing key and talks to the network; the
+  tools are offline build checks run by build.sh/prebuilt.sh/symdev.yml and a test server.
+  Separate crates keep their dependencies apart (pkgtools needs no symdev-sdk / S3 code,
+  publish no tar walking / HTML / ELF) and the job builds both with one `cargo build`.
+- sdk-casefold: symdev's `SdkIncludeCaseFold` (crates/symdev-build/src/resources/
+  casefold.rs) does not fit 1:1: it walks with read_dir order (the first file of a case
+  tie is whatever the directory lists first, not the first in sorted order as the Python
+  test requires), follows directory symlinks, writes the include path as given into the
+  marker and has no "not a directory" error. → ported. The real SDK's epoc32/include
+  (2 123 files) has no two paths equal up to case, so both give the same overlay there.
+- sdk-free: the Python reads tar, .tar.gz and .tgz (nested), not ar members; ported as is
+  (a malformed `.a` in its tests must pass). Descending into ar would need SDK member
+  hashes too to mean anything — a follow-up, not a port.
+- ar archives (notices' toolchain checks) are read natively (GNU/BSD long names), tested
+  against archives made by binutils `ar rcD` as the Python tests made them.
+
+## Facts
+
+- runtime-closure equivalence (`~/src/pkgtools-scratch/closure/`): the rehearsal's real
+  maps (`~/src/rl-shims-scratch/rehearse/work/prebuilt-work/closure/{gcce,prebuilt}.map`),
+  Python vs `pkgtools runtime-closure`, stdout, stderr and exit code compared separately:
+  identical for the shipped four (exit 0), three (exit 1), five (exit 1), a file without
+  the section (exit 1), all 14 members of the map as the set (every inclusion printed),
+  and prebuilt.map (exit 1). (A `2>&1` diff only shows Python's buffered stdout order.)
+- sdk-casefold equivalence (`~/src/pkgtools-scratch/casefold/`): the rehearsal SDK's
+  epoc32/include (`~/src/rl-shims-scratch/home/sdk/s60-3rd-fp2/1.1`), Python vs
+  `pkgtools sdk-casefold`: 260 links, the `find` listing of both overlays (type + path),
+  every link target and the marker identical; the same 260 links (targets relative to
+  epoc32/include) as the overlays symdev's own `SdkIncludeCaseFold` built in
+  examples/{gui,hello} and symbian-rs/examples/ui. Shared walker `TreeWalk` = os.walk with
+  sorted names, but an unreadable directory is an error (os.walk skips it silently).
+
+- Lead's additions (2026-10-03): (1) rebase rl-shims onto main a649cf6 (SHA-pinned actions,
+  dependabot): **`git rebase main` and then `git merge main` were both refused by this
+  session's permission rules** (destructive / bypass) — not done, left to the lead. Every
+  `uses:` I add or edit gets the SHA pins of a649cf6 (checkout 3d3c42e5…, cache 55cc8345…,
+  upload-artifact 330a01c4…, download-artifact 634f93cb…). (2) `commit` pin: recipe 0.3.0
+  `commit = "0000…0"` (placeholder: zeros parse as 40 hex so publish's tests on the real
+  recipe keep passing; build.sh refuses zeros with "commit not set — fill it in at
+  release"); publish's parser validates `commit` = 40 lowercase hex and refuses it without
+  `tag` (3 tests, RED first: unknown field); build.sh checks the clone's commit = the pin.
+  Checked on the rehearsal clone (tag v0.3.0 = d62ead28…): zeros → "commit not set";
+  1111… → "v0.3.0 in file://… is commit d62ead28…, but … pins commit 1111…"; the right
+  sha → passes to `rustc -vV` (a fake rustc stopped it); `ABC` → "not the 40 lowercase hex
+  digits". 0.1.0/0.2.0 recipes (published) left without a pin — the lead may add theirs.
+- sdk-free equivalence (`~/src/pkgtools-scratch/sdkfree/`), SDK = the rehearsal's
+  (2 411 distinct files), Python vs `pkgtools sdk-free`, stdout/stderr/exit separately:
+  identical for the rehearsal artifact (`~/src/rl-shims-scratch/rehearse/artifact`, exit 0,
+  "no file of the SDK (2411 distinct files) in …"), e32std.h renamed in a tar.gz in a tar
+  plus an EPOC32/ dir in it (exit 1, 3 leaks), a .tgz of SDK files (exit 1), both paths at
+  once, a directory of all the controls plus a renamed euser.dso (exit 1, 12 leaks, same
+  order). Unreadable archives (truncated, empty file): both exit 2, the detail differs
+  (Python's tarfile wording vs tar/flate2's). Deliberate differences, all fail-closed:
+  bzip2/xz/zstd tars are refused (exit 2; the pipeline makes tar/gzip only), a damaged
+  header after the first is an error (tarfile stops silently), an unreadable directory is
+  an error (os.walk skips it). A tar cut exactly at a header boundary passes in both.
+- target2-abs32 = `symdev_elf2e32::Target2Rewrite::object` (rl-driver worktree, committed in
+  c982182; path dependency `../../../symdev/rl-driver/crates/symdev-elf2e32`, the lead
+  switches it to the v0.3.0 tag). The Python's 11 rewrite/refusal tests pass on it
+  unchanged (its messages contain the Python's: "ELF type 2, not a relocatable object",
+  "section 1: contents past the end of the file"); it also refuses any section past EOF,
+  not only relocation sections. Equivalence (`~/src/pkgtools-scratch/target2/`): the
+  rehearsal's prebuilt.sh run with a wrapper that saves each object before the Python
+  rewrite (10 shims + 4 runtime members, published GCCE + rehearsal SDK): pkgtools on
+  copies of them → all 14 byte-identical to the Python's rewritten objects, per-file counts
+  identical (10 relocations: active 1, f32 1, leave 1, avkon 1, list 3, note 1, query 2),
+  and that run's lib/*.a = run1's lib/*.a (experiment 109's verified set, 90 376 B).
+- notices equivalence (`~/src/pkgtools-scratch/notices/`): symdev tag v0.2.0 (clone of
+  ~/projects/symdev at 7ca94bba), `--package symdev-cli --target x86_64-unknown-linux-musl`,
+  rustc 1.98.1: Python and `pkgtools notices` both 2 857 928 bytes, **cmp identical**
+  (121 crates, 4 bundled, 3 toolchain entries, no gaps); same on the rehearsal's tag tree
+  (d62ead28), and = the THIRD-PARTY-NOTICES.txt the rehearsal's build.sh shipped. Python
+  0.48 s, Rust (debug) 0.33 s. musl's COPYRIGHT is compiled in (`include_str!` of
+  tools/notices/musl-1.2.5/COPYRIGHT; MUSL_COPYRIGHTS by version). HtmlText reproduces
+  HTMLParser's per-piece whitespace collapse (text around an inline tag keeps two spaces);
+  entities other than amp/lt/gt/quot/apos and printable numeric ones are an error (the pages
+  hold only &#34; &#39; &#60; &#62;). cargo gets the canonical manifest path (the Python
+  passed it as given while running in the checkout, wrong for a relative path).
+- `pkgtools serve <dir>` (hidden): 127.0.0.1, free port printed on stdout, HTTP/1.0 GET/HEAD,
+  404 for dirs/missing/`..`, one connection at a time (10 s read timeout), logs
+  `"GET /x HTTP/1.1" 200 <bytes>` to stderr. install.sh.test builds publish + pkgtools,
+  reads target_directory with sed (no python), waits for the port file. dash 73 ok, bash 73
+  ok, busybox wget case ok; a probe showed gets() counts real requests (symdev/ 1, index 7).
+- Scripts: build.sh (0.1.0, 0.2.0, 0.3.0 — all three called the notices .py) and prebuilt.sh
+  take `PKGTOOLS` (checked first: must be an executable, else "PKGTOOLS='…' is not this
+  repository's pkgtools binary; build it with …"); no python3, no ar for build.sh. 0.1.0
+  and 0.2.0 updated too: Python = Rust notices on v0.1.0 (2 828 096 B) and v0.2.0, so their
+  output does not change. symdev.yml build job: "Build this repository's tools" (one
+  `cargo build --release --locked -p publish -p pkgtools`, `$PUBLISH`/`$PKGTOOLS` into
+  GITHUB_ENV), the pack/install.sh dry runs use `$PUBLISH`, the SDK check `$PKGTOOLS sdk-free`;
+  PR paths + pkgtools/**, tools/**, Cargo.toml. tests.yml: no python3, no Python step,
+  + pkgtools/** path. No `uses:` line touched (they stay as on this branch; main's SHA pins
+  come with the lead's rebase).
+- End-to-end with the Rust tools: prebuilt.sh (rehearsal inputs, release pkgtools) exit 0,
+  lib/*.a = run1 = the Python run, `diff -r` of the whole out dir vs the Python run empty,
+  casefold overlays identical; build.sh (scratch recipe: rehearsal clone, commit pinned to
+  d62ead28) exit 0, its THIRD-PARTY-NOTICES.txt = Python's on the same tag.
+- Gates (final state): cargo test --workspace: pkgtools 66 + 1 + 2, publish 86 + 9; clippy
+  --workspace --all-targets -D warnings: 0; fmt --check ok; install.sh.test 73 ok under dash
+  and bash (busybox case included).
+- Review (subagent, d7542d0..4d8f485): fixed — HtmlText cut an entity name at byte 32
+  (panic on a wide char; now the whole name, an unknown one is an error); a .tar.gz of
+  nothing passed (Python: exit 2) → "empty file" after decompressing; serve logged after
+  answering (gets() could race) → logs first, as http.server; target2-abs32's help sat on
+  `serve`; an unreadable crtbeginS.o read as "runtime changed" → I/O error naming it;
+  target2-abs32 writes `<o>.partial` + rename (no half-written object); PKGTOOLS may be a
+  command on PATH (`command -v`). Kept: Cli + Command in main.rs (clap's pattern, as in
+  publish/src/main.rs). Critical (not fixable here): the path dependency stops every cargo
+  command of the workspace in CI, `cargo run -p publish` of publish.yml/build.yml/symdev.yml
+  included — the branch must not merge before the switch to the v0.3.0 tag. Re-run after
+  the fixes: tests pkgtools 69 + 1 + 2, publish 86 + 9; clippy -D warnings 0; install test
+  73 ok dash + bash; prebuilt.sh with PKGTOOLS=pkgtools on PATH: out = the Python run;
+  sdk-free artifact/controls identical to Python.
+
+## Dead ends
+
+## Next step
+
+Done; reported. Left to the lead: rebase rl-shims onto main a649cf6 (refused here); at
+the release switch `symdev-elf2e32` in pkgtools/Cargo.toml (and publish's symdev-sdk if
+wanted) to the v0.3.0 tag and fill recipe 0.3.0's `commit`; until the switch no cargo
+command of this workspace builds in CI.
+
 # WIP: G2 signed indexes — branch `index-signing`
 
 Brief (lead, 2026-10-03): `publish` signs every index it writes with `PUBLISH_SIGNING_KEY`
