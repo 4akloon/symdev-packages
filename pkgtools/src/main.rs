@@ -6,6 +6,7 @@ mod ar_archive;
 mod casefold;
 mod closure;
 mod device_entry;
+mod dsc;
 mod emulator_notices;
 mod emulator_tree;
 mod notices;
@@ -26,6 +27,7 @@ use clap::{Parser, Subcommand};
 use crate::casefold::IncludeOverlay;
 use crate::closure::ClosureTool;
 use crate::device_entry::DeviceEntry;
+use crate::dsc::Dsc;
 use crate::emulator_notices::EmulatorNotices;
 use crate::emulator_tree::EmulatorTreeTool;
 use crate::notices::NoticesTool;
@@ -103,6 +105,12 @@ enum Command {
         #[arg(value_name = "firmcode")]
         firmcode: String,
     },
+    /// Print the files of a Debian source package with their SHA-256s, from its .dsc, in
+    /// sha256sum -c format.
+    DscFiles {
+        #[arg(value_name = "file.dsc")]
+        dsc: PathBuf,
+    },
     /// Write share/doc/eka2l1/ into an extracted EKA2L1 AppImage: COPYING, every
     /// submodule's licence files, BUNDLED.tsv (with --packages) and SOURCE.txt.
     EmulatorNotices {
@@ -171,6 +179,21 @@ fn main() -> ExitCode {
                 1
             }
         },
+        Command::DscFiles { dsc } => {
+            let parsed = std::fs::read_to_string(&dsc)
+                .map_err(|e| tool_error::ToolError::io(dsc.display(), &e))
+                .and_then(|text| Dsc::parse(&text));
+            match parsed {
+                Ok(files) => {
+                    let _ = out.write_all(files.sha256sums().as_bytes());
+                    0
+                }
+                Err(e) => {
+                    let _ = writeln!(err, "error: {}: {e}", dsc.display());
+                    1
+                }
+            }
+        }
         Command::EmulatorNotices {
             src,
             tree,
