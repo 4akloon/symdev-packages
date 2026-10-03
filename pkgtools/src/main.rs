@@ -6,6 +6,7 @@ mod casefold;
 mod closure;
 mod py_path;
 mod py_text;
+mod sdk_free;
 mod tool_error;
 mod tree_walk;
 
@@ -17,6 +18,7 @@ use clap::{Parser, Subcommand};
 
 use crate::casefold::IncludeOverlay;
 use crate::closure::ClosureTool;
+use crate::sdk_free::SdkFreeTool;
 
 #[derive(Parser)]
 #[command(name = "pkgtools", version)]
@@ -45,6 +47,16 @@ enum Command {
         #[arg(value_name = "out-dir")]
         out: PathBuf,
     },
+    /// Fail unless build outputs hold nothing of the S60 SDK: no file (nor tar or .tar.gz
+    /// member, nested ones too) with the bytes of an SDK file, none with a path through
+    /// epoc32/. Exit 1 on a leak, 2 when the check cannot be made.
+    SdkFree {
+        #[arg(value_name = "sdk-dir")]
+        sdk: PathBuf,
+        /// A directory, tar or .tar.gz to search.
+        #[arg(value_name = "path", required = true)]
+        paths: Vec<PathBuf>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -54,6 +66,7 @@ fn main() -> ExitCode {
         Command::RuntimeClosure { map, shipped } => {
             ClosureTool::run(&map, &shipped, &mut out, &mut err)
         }
+        Command::SdkFree { sdk, paths } => SdkFreeTool::run(&sdk, &paths, &mut out, &mut err),
         Command::SdkCasefold { include, out: dir } => {
             report(IncludeOverlay::ensure(&include, &dir).map(|o| o.display().to_string()))
         }

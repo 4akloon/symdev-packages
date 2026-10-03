@@ -14,7 +14,7 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
 | notices | todo |
 | runtime-closure | done: 12 tests = the Python's 12; real maps identical (see Facts) |
 | sdk-casefold | done: 6 tests = the Python's 6 (+ mutation: last-wins tie fails); real SDK identical |
-| sdk-free | todo |
+| sdk-free | done: 8 unit + 1 CLI test = the Python's 9; rehearsal artifact identical |
 | target2-abs32 | todo (symdev's API not in rl-driver yet: 22c840a has notes only) |
 | serve (install test) | todo |
 | scripts/workflows/README | todo |
@@ -68,6 +68,17 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
   1111… → "v0.3.0 in file://… is commit d62ead28…, but … pins commit 1111…"; the right
   sha → passes to `rustc -vV` (a fake rustc stopped it); `ABC` → "not the 40 lowercase hex
   digits". 0.1.0/0.2.0 recipes (published) left without a pin — the lead may add theirs.
+- sdk-free equivalence (`~/src/pkgtools-scratch/sdkfree/`), SDK = the rehearsal's
+  (2 411 distinct files), Python vs `pkgtools sdk-free`, stdout/stderr/exit separately:
+  identical for the rehearsal artifact (`~/src/rl-shims-scratch/rehearse/artifact`, exit 0,
+  "no file of the SDK (2411 distinct files) in …"), e32std.h renamed in a tar.gz in a tar
+  plus an EPOC32/ dir in it (exit 1, 3 leaks), a .tgz of SDK files (exit 1), both paths at
+  once, a directory of all the controls plus a renamed euser.dso (exit 1, 12 leaks, same
+  order). Unreadable archives (truncated, empty file): both exit 2, the detail differs
+  (Python's tarfile wording vs tar/flate2's). Deliberate differences, all fail-closed:
+  bzip2/xz/zstd tars are refused (exit 2; the pipeline makes tar/gzip only), a damaged
+  header after the first is an error (tarfile stops silently), an unreadable directory is
+  an error (os.walk skips it). A tar cut exactly at a header boundary passes in both.
 
 ## Dead ends
 
