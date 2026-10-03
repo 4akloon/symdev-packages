@@ -6,6 +6,8 @@ mod ar_archive;
 mod casefold;
 mod closure;
 mod device_entry;
+mod emulator_notices;
+mod emulator_tree;
 mod notices;
 mod py_path;
 mod py_text;
@@ -24,6 +26,8 @@ use clap::{Parser, Subcommand};
 use crate::casefold::IncludeOverlay;
 use crate::closure::ClosureTool;
 use crate::device_entry::DeviceEntry;
+use crate::emulator_notices::EmulatorNotices;
+use crate::emulator_tree::EmulatorTreeTool;
 use crate::notices::NoticesTool;
 use crate::sdk_free::SdkFreeTool;
 use crate::serve::StaticServer;
@@ -99,6 +103,32 @@ enum Command {
         #[arg(value_name = "firmcode")]
         firmcode: String,
     },
+    /// Write share/doc/eka2l1/ into an extracted EKA2L1 AppImage: COPYING, every
+    /// submodule's licence files, BUNDLED.tsv (with --packages) and SOURCE.txt.
+    EmulatorNotices {
+        #[arg(value_name = "eka2l1-src")]
+        src: PathBuf,
+        #[arg(value_name = "tree")]
+        tree: PathBuf,
+        #[arg(long, value_name = "id")]
+        id: String,
+        #[arg(long, value_name = "sha")]
+        commit: String,
+        #[arg(long, value_name = "packages.tsv")]
+        packages: Option<PathBuf>,
+        /// A file listing extra licence files, one path relative to <eka2l1-src> per line.
+        #[arg(long, value_name = "list")]
+        extra: Option<PathBuf>,
+    },
+    /// Check an extracted EKA2L1 AppImage for the layout symdev starts it by and for the
+    /// glibc floor artifact.toml records. Exit 1 on any difference.
+    EmulatorTree {
+        #[arg(value_name = "tree")]
+        tree: PathBuf,
+        /// The recorded floor, e.g. 2.38.
+        #[arg(long, value_name = "x.y")]
+        glibc: String,
+    },
     /// Rewrite every R_ARM_TARGET2 relocation of GCCE objects into R_ARM_ABS32, in place
     /// (symdev experiment 109): only the type byte of each relocation entry changes.
     #[command(name = "target2-abs32")]
@@ -141,6 +171,38 @@ fn main() -> ExitCode {
                 1
             }
         },
+        Command::EmulatorNotices {
+            src,
+            tree,
+            id,
+            commit,
+            packages,
+            extra,
+        } => {
+            let extra = extra
+                .as_deref()
+                .map_or(Ok(Vec::new()), EmulatorNotices::read_extra);
+            let written = extra.and_then(|extra| {
+                EmulatorNotices {
+                    src,
+                    tree,
+                    id,
+                    commit,
+                    packages,
+                    extra,
+                }
+                .write()
+            });
+            report(written.map(|(files, packages)| {
+                format!(
+                    "wrote share/doc/eka2l1: COPYING, {files} licence files, {packages} bundled \
+                     packages, SOURCE.txt"
+                )
+            }))
+        }
+        Command::EmulatorTree { tree, glibc } => {
+            EmulatorTreeTool::run(&tree, &glibc, &mut out, &mut err)
+        }
         Command::RuntimeClosure { map, shipped } => {
             ClosureTool::run(&map, &shipped, &mut out, &mut err)
         }

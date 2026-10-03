@@ -1,0 +1,10 @@
+# The fork CI run this package is made from. build.sh refuses the zeros: they stand for
+# "not run yet" (the push that starts the run is the lead's step L1).
+repository = "4akloon/EKA2L1"
+commit = "29d5f58aecc8826a7832c3acdce36461021da39f"
+run = "0"
+artifact = "eka2l1-29d5f58-linux"
+appimage-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+packages-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+# The newest GLIBC_ version the tree needs (pkgtools emulator-tree checks it; plan F1).
+glibc = "2.38"

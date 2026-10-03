@@ -1,0 +1,18 @@
+# emulator;2026.10.03 — EKA2L1 with symdev's control server and per-instance data folders: the
+# Linux AppImage that the CI of 4akloon/EKA2L1 built from its `symdev` integration branch
+# (upstream master + our open PRs + the package-list commit; symdev's
+# 2026-10-03-emulator-firmware-packages-design §2–§3), extracted. symdev starts
+# usr/bin/eka2l1_qt itself (symdev experiment 115 §1.2). No FUSE is needed at run time.
+#
+# build.sh reads artifact.toml (the CI run, the artifact and its SHA-256s), checks the
+# artifact against it, extracts it, checks the tree (pkgtools emulator-tree) and writes
+# share/doc/eka2l1/ (pkgtools emulator-notices). source.sh writes the corresponding source
+# archive that `publish public --source-code` uploads beside the package.
+#
+# licence: EKA2L1 is GPL-3.0-or-later and Qt LGPL-3.0-only; LicenseRef-EKA2L1-bundle stands
+# for the other bundled libraries, each listed in share/doc/eka2l1/BUNDLED.tsv with its
+# usr/share/doc/<package>/copyright (plan decision D1).
+id = "emulator;2026.10.03"
+license = "GPL-3.0-or-later AND LGPL-3.0-only AND LicenseRef-EKA2L1-bundle"
+host = "x86_64-linux"
+build = "build.sh"
