@@ -1,3 +1,57 @@
+# WIP: Rust tools — branch `rl-shims`
+
+Owner decision (2026-10-03, via the lead): every tool the pipeline runs regularly is Rust.
+Port tools/*.py (notices, target2-abs32, runtime-closure, sdk-casefold, sdk-free) and the
+install test's `python3 -m http.server` to Rust; tests 1:1 first (TDD); equivalence runs
+old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch/`.
+
+## Status
+
+| Step | State |
+|---|---|
+| baseline (rl-shims d7542d0) | cargo test 83 + 9 ok |
+| design: crate `pkgtools` | decided (below) |
+| notices | todo |
+| runtime-closure | done: 12 tests = the Python's 12; real maps identical (see Facts) |
+| sdk-casefold | todo |
+| sdk-free | todo |
+| target2-abs32 | todo (symdev's API not in rl-driver yet: 22c840a has notes only) |
+| serve (install test) | todo |
+| scripts/workflows/README | todo |
+| equivalence runs | todo |
+
+## Decisions
+
+- A second binary, `pkgtools` (workspace member `pkgtools/`), not subcommands of `publish`:
+  `publish` holds the bucket credentials and signing key and talks to the network; the
+  tools are offline build checks run by build.sh/prebuilt.sh/symdev.yml and a test server.
+  Separate crates keep their dependencies apart (pkgtools needs no symdev-sdk / S3 code,
+  publish no tar walking / HTML / ELF) and the job builds both with one `cargo build`.
+- sdk-casefold: symdev's `SdkIncludeCaseFold` (crates/symdev-build/src/resources/
+  casefold.rs) does not fit 1:1: it walks with read_dir order (the first file of a case
+  tie is whatever the directory lists first, not the first in sorted order as the Python
+  test requires), follows directory symlinks, writes the include path as given into the
+  marker and has no "not a directory" error. → ported. The real SDK's epoc32/include
+  (2 123 files) has no two paths equal up to case, so both give the same overlay there.
+- sdk-free: the Python reads tar, .tar.gz and .tgz (nested), not ar members; ported as is
+  (a malformed `.a` in its tests must pass). Descending into ar would need SDK member
+  hashes too to mean anything — a follow-up, not a port.
+- ar archives (notices' toolchain checks) are read natively (GNU/BSD long names), tested
+  against archives made by binutils `ar rcD` as the Python tests made them.
+
+## Facts
+
+- runtime-closure equivalence (`~/src/pkgtools-scratch/closure/`): the rehearsal's real
+  maps (`~/src/rl-shims-scratch/rehearse/work/prebuilt-work/closure/{gcce,prebuilt}.map`),
+  Python vs `pkgtools runtime-closure`, stdout, stderr and exit code compared separately:
+  identical for the shipped four (exit 0), three (exit 1), five (exit 1), a file without
+  the section (exit 1), all 14 members of the map as the set (every inclusion printed),
+  and prebuilt.map (exit 1). (A `2>&1` diff only shows Python's buffered stdout order.)
+
+## Dead ends
+
+## Next step
+
 # WIP: G2 signed indexes — branch `index-signing`
 
 Brief (lead, 2026-10-03): `publish` signs every index it writes with `PUBLISH_SIGNING_KEY`
