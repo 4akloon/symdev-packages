@@ -3,6 +3,7 @@
 
 mod bundled;
 mod checkout;
+mod component;
 mod crate_dir;
 mod dependency_graph;
 mod entry;

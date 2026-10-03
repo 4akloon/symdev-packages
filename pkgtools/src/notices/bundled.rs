@@ -1,18 +1,8 @@
 //! `Bundled`: code inside a crate that has a licence of its own.
 
+use super::component::Component;
 use super::{Crate, Entry};
 use crate::tool_error::{Result, ToolError};
-
-/// One piece of bundled code the binary links.
-struct Component {
-    /// `{version}` is replaced by what `version` finds.
-    title: &'static str,
-    license: &'static str,
-    files: &'static [&'static str],
-    /// A file and the text before the version, which ends at the next `"`.
-    version: Option<(&'static str, &'static str)>,
-    note: &'static str,
-}
 
 /// Every crate with `links` (native code) and every licence file below a crate's top must
 /// be named here: as a component the binary links, or under `not_linked` with the reason
