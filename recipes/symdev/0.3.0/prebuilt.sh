@@ -114,10 +114,13 @@ for kind in common s60; do
     obj=$work/obj/$kind/$(basename "${source%.cpp}").o
     log=${obj%.o}.log
     # -I the source's own directory first, as symdev does, so `#include "symrs_shim.h"`
-    # finds its neighbour; the SDK headers' warnings go to the log.
+    # finds its neighbour; the SDK headers' warnings go to the log. On a failure only the
+    # diagnostics' own lines are shown, not the source lines GCC quotes under them, which
+    # may be the SDK's: CI logs can be public, the SDK may not be passed on.
     "$cxx" "${cxx_args[@]}" -I "$shims/$kind" -I "$include" -I "$include/variant" \
       -I "$work/casefold" -I "$gcc_lib/include" -o "$obj" "$source" 2>"$log" ||
-      { cat "$log" >&2; fail "cannot compile $source"; }
+      { grep -E '^(In file included from |[[:space:]]+from )|: (fatal error|error|warning|note): ' \
+        "$log" >&2 || true; fail "cannot compile $source (full log: $log)"; }
   done
 done
 "$nm" "$work/obj/s60/symrs_avkon.o" | grep -qx ' *U symrs_uid3' ||
