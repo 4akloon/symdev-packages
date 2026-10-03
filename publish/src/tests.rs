@@ -3,15 +3,18 @@
 mod fake_bucket;
 mod file_upload;
 mod refusals;
+mod sign_index;
+mod signing;
 mod two_packages;
 
 use std::fs;
 use std::path::Path;
 
-use symdev_sdk::{Host, Index, PackageId, Result, S3Keys};
+use symdev_sdk::{Host, Index, IndexSigningKey, PackageId, Result, S3Keys, SignedIndex};
 
 use self::fake_bucket::FakeBucket;
 use crate::bucket::Bucket;
+use crate::index_keys::IndexKeys;
 use crate::mode::Mode;
 use crate::publication::Publication;
 use crate::recipe::Recipe;
@@ -20,6 +23,18 @@ use crate::visibility::Visibility;
 const SDK: &str = "sdk;s60-3rd-fp2;1.1";
 const GCCE: &str = "gcce;12.1.0";
 const ARCHIVE_TYPE: (&str, &str) = ("application/gzip", "public, max-age=31536000, immutable");
+/// The tests' index signing key: the base64 of the seed of 32 bytes 0x07.
+const SEED: &str = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=";
+
+fn signing_key() -> IndexSigningKey {
+    IndexSigningKey::from_base64(SEED).unwrap()
+}
+
+/// What a run with `PUBLISH_SIGNING_KEY` set to [`SEED`] signs and checks with, in a world
+/// where clients trust that key.
+fn index_keys() -> IndexKeys {
+    IndexKeys::new(Some(signing_key()), signing_key().trusted())
+}
 
 fn keys() -> S3Keys {
     S3Keys {
@@ -76,12 +91,20 @@ fn private(tree: &Path, recipe: Recipe) -> Publication {
     Publication::new(Visibility::Private, recipe, tree, None).unwrap()
 }
 
-/// Runs `p` with a fresh output directory; returns the result, stdout, stderr, and the
-/// output directory.
+/// Runs `p` with a fresh output directory and the tests' signing key; returns the result,
+/// stdout, stderr, and the output directory.
 fn run(p: &Publication, mode: &Mode) -> (Result<()>, String, String, tempfile::TempDir) {
+    run_with(p, mode, &index_keys())
+}
+
+fn run_with(
+    p: &Publication,
+    mode: &Mode,
+    keys: &IndexKeys,
+) -> (Result<()>, String, String, tempfile::TempDir) {
     let out_dir = tempfile::tempdir().unwrap();
     let (mut out, mut progress) = (Vec::new(), Vec::new());
-    let result = p.run(mode, out_dir.path(), &mut out, &mut progress);
+    let result = p.run(mode, keys, out_dir.path(), &mut out, &mut progress);
     let text = |b: Vec<u8>| String::from_utf8(b).unwrap();
     (result, text(out), text(progress), out_dir)
 }
@@ -210,6 +233,7 @@ fn packages_already_in_the_index_are_kept() {
         .to_string()
         + &"a".repeat(64)
         + "\"\nsize = 1\n";
+    let old = SignedIndex::sign(&old, &signing_key()).to_text();
     let bucket = FakeBucket::start().with("index.toml", old.as_bytes());
     run(
         &private(sdk.path(), pinned_sdk_recipe(sdk.path())),

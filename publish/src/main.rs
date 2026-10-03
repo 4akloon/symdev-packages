@@ -5,11 +5,13 @@ mod archive;
 mod bucket;
 mod file_upload;
 mod include;
+mod index_keys;
 mod mode;
 mod object_key;
 mod publication;
 mod recipe;
 mod settings;
+mod unsigned;
 mod visibility;
 
 use std::fs;
@@ -31,8 +33,10 @@ use crate::visibility::Visibility;
 /// it to the bucket's index.toml and uploads the archive, then the index.
 ///
 /// Environment: PUBLISH_PRIVATE_URL and PUBLISH_PUBLIC_URL (the buckets' S3 endpoints),
-/// PUBLISH_ACCESS_KEY_ID and PUBLISH_SECRET_ACCESS_KEY (the publisher key). A --dry-run
-/// needs none of them: it reads the index if the bucket URL is set and uploads nothing.
+/// PUBLISH_ACCESS_KEY_ID and PUBLISH_SECRET_ACCESS_KEY (the publisher key),
+/// PUBLISH_SIGNING_KEY (the base64 Ed25519 seed every index is signed with). A --dry-run
+/// needs none of them: it reads the index if the bucket URL is set, signs it if the
+/// signing key is set, and uploads nothing.
 #[derive(Parser)]
 #[command(name = "publish", version)]
 struct Cli {
@@ -72,6 +76,21 @@ enum Command {
         #[arg(long, value_name = "recipe.toml")]
         recipe: PathBuf,
         /// Pack, check and print the new index; upload nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Sign the bucket's existing index.toml as it is and upload it (no-cache): how an
+    /// index published unsigned gets its signature. Lists the archives it signs; an
+    /// index whose signature does not verify, or that does not parse, is refused.
+    SignIndex {
+        /// The bucket whose index to sign.
+        #[arg(long, value_name = "bucket")]
+        bucket: BucketName,
+        /// Sign an unsigned index: the SHA-256 its --dry-run printed, after you checked
+        /// every archive it lists. Only exactly those bytes are signed.
+        #[arg(long, value_name = "sha256")]
+        accept_unsigned: Option<String>,
+        /// Read, check and print the signed index; upload nothing.
         #[arg(long)]
         dry_run: bool,
     },
@@ -147,6 +166,20 @@ fn run(command: Command) -> Result<()> {
             &recipe,
             dry_run,
         ),
+        Command::SignIndex {
+            bucket,
+            accept_unsigned,
+            dry_run,
+        } => {
+            let settings = Settings::from_env();
+            let mode = settings.mode(bucket.into(), dry_run)?;
+            settings.index_keys(dry_run)?.resign(
+                &mode,
+                accept_unsigned.as_deref(),
+                &mut io::stdout().lock(),
+                &mut io::stderr().lock(),
+            )
+        }
         Command::File {
             path,
             to,
@@ -172,7 +205,9 @@ fn publish(
     recipe_path: &Path,
     dry_run: bool,
 ) -> Result<()> {
-    let mode = Settings::from_env().mode(visibility, dry_run)?;
+    let settings = Settings::from_env();
+    let mode = settings.mode(visibility, dry_run)?;
+    let keys = settings.index_keys(dry_run)?;
     let shown = recipe_path.display().to_string();
     let text = fs::read_to_string(recipe_path).map_err(|source| SdkError::Io {
         path: shown.clone(),
@@ -186,6 +221,7 @@ fn publish(
     })?;
     publication.run(
         &mode,
+        &keys,
         &out_dir,
         &mut io::stdout().lock(),
         &mut io::stderr().lock(),

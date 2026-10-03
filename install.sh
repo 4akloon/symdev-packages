@@ -9,9 +9,22 @@
 # itself writes, so `symdev sdk list` shows it, and links ~/.local/bin/symdev to it.
 # Re-running it installs a newer version if there is one. It touches nothing else.
 #
+# The index is signed (symdev spec §14): its first line is `# symdev-signature: ed25519
+# <base64>`, the Ed25519 signature of the rest by the project key, whose public half is
+# below. With OpenSSL 3 the signature is checked, and an index that is unsigned or does not
+# verify is refused; without it a warning says the index could not be verified (HTTPS and
+# the archive's SHA-256 still apply).
+#
 # SYMDEV_INSTALL_URL replaces the bucket: the URL of the directory that holds index.toml.
-# Needs curl or wget, sha256sum or shasum, tar with gzip, and a POSIX sh.
+# SYMDEV_INSTALL_PUBKEY replaces the project key, for tests and for mirrors signed with
+# their own key: base64 Ed25519 public keys (the raw 32 bytes), separated by spaces.
+# Needs curl or wget, sha256sum or shasum, tar with gzip, and a POSIX sh; OpenSSL 3 to
+# verify the index.
 set -eu
+
+# The project's index-signing public key: SHA-256 of its 32 bytes bdf5345cc3ca8c30661dbc53b2
+# cbd16983d081bf26913d0c3ebe7480ca334d44, as symdev's TrustedKeys::builtin.
+PROJECT_KEY=C1yh60B72Qa4YE4rZOgoPJZmTYKbh/uzHjupoVwqfLU=
 
 # Everything runs from main, called on the last line, so a download cut short (curl | sh)
 # runs nothing.
@@ -23,10 +36,73 @@ die() {
   exit 1
 }
 
+# pem <base64 key> <file>: the key as a PEM public key. An Ed25519 SubjectPublicKeyInfo is a
+# fixed 12-byte prefix (base64 MCowBQYDK2VwAyEA) and the 32 raw bytes.
+pem() { printf -- '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA%s\n-----END PUBLIC KEY-----\n' "$1" >"$2"; }
+
+# verify <file> <url>: checks the index's signature line against $keys and writes the body
+# (the bytes after the line, or the whole file without one) to $tmp/index.body, which is
+# all that is read afterwards. Dies when the line is malformed, or, with OpenSSL 3, when it
+# is missing or does not verify.
+verify() {
+  first=$(head -n 1 "$1")
+  signed=
+  sig=
+  case $first in
+    "# symdev-signature: ed25519 "*) signed=1 sig=${first#"# symdev-signature: ed25519 "} ;;
+    "# symdev-signature:"*) die "$2 has a malformed signature line (not ed25519); it may have been tampered with, so nothing was installed" ;;
+  esac
+  if [ -n "$signed" ]; then
+    case $sig in *[!A-Za-z0-9+/=]* | "") die "$2 has a malformed signature line (not base64); it may have been tampered with, so nothing was installed" ;; esac
+    [ ${#sig} -eq 88 ] || die "$2 has a malformed signature line (not 64 bytes); it may have been tampered with, so nothing was installed"
+    tail -n +2 "$1" >"$tmp/index.body"
+  else
+    cp "$1" "$tmp/index.body"
+  fi
+  # OpenSSL 3 is what checks Ed25519 with -rawin. The probe loads the project key, never
+  # SYMDEV_INSTALL_PUBKEY's, so a malformed override fails verification below instead of
+  # turning it off.
+  verifiable=
+  if command -v openssl >/dev/null 2>&1; then
+    case $(openssl version 2>/dev/null || true) in
+      "OpenSSL "[3-9].* | "OpenSSL "[1-9][0-9]*.*)
+        pem "$PROJECT_KEY" "$tmp/key.pem"
+        if openssl pkey -pubin -in "$tmp/key.pem" -noout >/dev/null 2>&1; then verifiable=1; fi ;;
+    esac
+  fi
+  if [ -z "$verifiable" ]; then
+    warn "the index could not be verified: this needs OpenSSL 3 (openssl pkeyutl -rawin); the archive is still checked against the index's SHA-256 over HTTPS"
+    return
+  fi
+  [ -n "$signed" ] || die "$2 is unsigned (its first line is not '# symdev-signature: ed25519 …'); it may have been tampered with, so nothing was installed"
+  printf '%s' "$sig" | openssl base64 -d -A >"$tmp/index.sig" || die "$2: cannot decode its signature"
+  for key in $keys; do
+    pem "$key" "$tmp/key.pem"
+    if openssl pkeyutl -verify -pubin -inkey "$tmp/key.pem" -rawin -in "$tmp/index.body" \
+      -sigfile "$tmp/index.sig" >/dev/null 2>&1; then
+      say "verified the signature of $2"
+      return
+    fi
+  done
+  die "the signature of $2 does not verify with $keyname: the index was tampered with after it was signed, or another key signed it, so nothing was installed"
+}
+
 main() {
   base=${SYMDEV_INSTALL_URL:-https://pub-15670d2771364287b9982e497c29f586.r2.dev/}
   case $base in */) ;; *) base=$base/ ;; esac
 
+  keys=${SYMDEV_INSTALL_PUBKEY:-$PROJECT_KEY}
+  keyname="the project key"
+  [ -z "${SYMDEV_INSTALL_PUBKEY:-}" ] || keyname=SYMDEV_INSTALL_PUBKEY
+  for key in $keys; do
+    case $key in
+      *[!A-Za-z0-9+/=]* | *=*=) die "SYMDEV_INSTALL_PUBKEY: '$key' is not base64; give the base64 of 32-byte Ed25519 public keys, separated by spaces" ;;
+    esac
+    case $key in
+      *=) [ ${#key} -eq 44 ] || die "SYMDEV_INSTALL_PUBKEY: '$key' is not the base64 of a 32-byte Ed25519 public key" ;;
+      *) die "SYMDEV_INSTALL_PUBKEY: '$key' is not the base64 of a 32-byte Ed25519 public key" ;;
+    esac
+  done
   [ -n "${HOME:-}" ] || die "HOME is not set"
   system=$(uname -sm)
   case $system in
@@ -60,6 +136,7 @@ main() {
   # --- the index -------------------------------------------------------------------------
   index=${base}index.toml
   fetch "$index" "$tmp/index.toml" || die "cannot download $index"
+  verify "$tmp/index.toml" "$index"
 
   # One line per archive: `<id> <host> <url> <sha256> <size>`, after a `schema <n>` line. The
   # index is the publisher's TOML (`key = value` lines, [[package]] / [[package.archive]]).
@@ -87,7 +164,7 @@ main() {
       else if (archive && key == "size") size = value($0)
     }
     END { flush(); print "schema", schema }
-  ' "$tmp/index.toml" >"$tmp/archives" || die "cannot read $index"
+  ' "$tmp/index.body" >"$tmp/archives" || die "cannot read $index"
   schema=$(sed -n 's/^schema //p' "$tmp/archives")
   [ "$schema" = 1 ] ||
     die "$index has schema ${schema:-(none)}, which this install.sh does not read; download the current one from ${base}install.sh"

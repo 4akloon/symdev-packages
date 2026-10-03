@@ -1,7 +1,9 @@
 #!/bin/sh
 # install.sh against a fake public bucket: python3 -m http.server on 127.0.0.1, holding
 # packages and an index.toml written by `publish public … --dry-run`, so the index has the
-# exact format the publisher writes.
+# exact format the publisher writes, signed as it signs (with a throwaway key, which
+# install.sh is given through SYMDEV_INSTALL_PUBKEY). Needs openssl 3 (re-signing an index
+# a test edits) and python3.
 #
 #   sh tests/install.sh.test [<shell>]
 #
@@ -38,6 +40,12 @@ check() {
 }
 contains() { grep -q -F -e "$2" "$1"; }
 
+# The throwaway index key: the seed of 32 bytes 0x07 (PUBLISH_SIGNING_KEY for publish) and
+# its public key (SYMDEV_INSTALL_PUBKEY); `other` is the public key of 32 bytes 0x08.
+seed=BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
+pubkey=6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=
+other=E5j2LG0aRXxRumpLXz29L2n8qTIWIY3ImX5Ba9F9k8o=
+
 # --- the bucket ------------------------------------------------------------------------
 cargo build --quiet --locked --manifest-path "$root/Cargo.toml" -p publish
 publish_bin=$(cargo metadata --format-version 1 --no-deps --manifest-path "$root/Cargo.toml" |
@@ -56,6 +64,19 @@ until curl -s -o /dev/null "$url"; do
 done
 printf 'source' >"$tmp/source.tar.gz"
 
+# resign <index>: signs the body of <index> (after its signature line) again, as publish
+# would, after a test edited it. The PEM is the seed behind PKCS#8's fixed 16-byte prefix.
+{
+  printf '\060\056\002\001\000\060\005\006\003\053\145\160\004\042\004\040'
+  printf '%s' "$seed" | openssl base64 -d -A
+} >"$tmp/seed.der"
+openssl pkey -inform DER -in "$tmp/seed.der" -out "$tmp/seed.pem"
+resign() {
+  tail -n +2 "$1" >"$tmp/body"
+  openssl pkeyutl -sign -inkey "$tmp/seed.pem" -rawin -in "$tmp/body" -out "$tmp/sig"
+  { printf '# symdev-signature: ed25519 %s\n' "$(openssl base64 -A -in "$tmp/sig")"; cat "$tmp/body"; } >"$1"
+}
+
 # tree <version>: a package tree whose bin/symdev prints `symdev stub <version>`.
 tree() {
   mkdir -p "$tmp/trees/$1/bin"
@@ -72,7 +93,7 @@ add() {
   read_url=$url
   [ "${4:-}" != fresh ] || read_url=
   (cd "$tmp/pack" && env -u PUBLISH_PRIVATE_URL -u PUBLISH_ACCESS_KEY_ID \
-    -u PUBLISH_SECRET_ACCESS_KEY PUBLISH_PUBLIC_URL="$read_url" \
+    -u PUBLISH_SECRET_ACCESS_KEY PUBLISH_PUBLIC_URL="$read_url" PUBLISH_SIGNING_KEY="$seed" \
     "$publish_bin" public "$1" --from "$3" --source-code "$tmp/source.tar.gz" \
     --recipe "$tmp/recipe.toml" --dry-run >"$tmp/index.new" 2>"$tmp/publish.err") ||
     { cat "$tmp/publish.err" >&2; exit 1; }
@@ -86,11 +107,12 @@ add() {
 # archive <id>: the bucket path of <id>'s archive.
 archive() { ls "$bucket/$(echo "$1" | tr ';' '/')/"*.tar.gz; }
 
-# install <home> [VAR=value…]: runs install.sh in a clean environment.
+# install <home> [VAR=value…]: runs install.sh in a clean environment, trusting the test key.
 install() {
   home=$1
   shift
-  env -i HOME="$home" PATH=/usr/bin:/bin SYMDEV_INSTALL_URL="$url" "$@" \
+  env -i HOME="$home" PATH=/usr/bin:/bin SYMDEV_INSTALL_URL="$url" \
+    SYMDEV_INSTALL_PUBKEY="$pubkey" "$@" \
     "$shell" "$install_sh" >"$tmp/out" 2>"$tmp/err"
 }
 show() { sed 's/^/    /' "$tmp/out" "$tmp/err"; }
@@ -119,6 +141,7 @@ printf 'id = "symdev;0.10.0"\nsha256 = "%s"\nsource = "public"\nurl = "%s"\n' \
 check "the receipt is the one symdev's SdkHome writes" cmp -s "$tmp/receipt" "$pkg/.symdev-package.toml"
 check "nothing is left in staging" test -z "$(ls -A "$h/.local/share/symdev/.staging" 2>/dev/null)"
 check "a PATH without ~/.local/bin gets a warning" contains "$tmp/err" "$h/.local/bin is not on your PATH"
+check "the index's signature is verified" contains "$tmp/out" "verified the signature of ${url}index.toml"
 
 # --- a second run with nothing new is a no-op ------------------------------------------
 stamp() { ls -lid --full-time "$pkg" "$pkg/bin/symdev" "$pkg/.symdev-package.toml" "$h/.local/bin/symdev" 2>&1 || true; }
@@ -140,8 +163,8 @@ check "0.10.0 stays installed" test -f "$pkg/.symdev-package.toml"
 # --- read from a pipe, as in `curl -fsSL …/install.sh | sh` ----------------------------
 h=$tmp/home11
 mkdir -p "$h"
-if env -i HOME="$h" PATH=/usr/bin:/bin SYMDEV_INSTALL_URL="$url" "$shell" <"$install_sh" \
-  >"$tmp/out" 2>"$tmp/err"; then
+if env -i HOME="$h" PATH=/usr/bin:/bin SYMDEV_INSTALL_URL="$url" SYMDEV_INSTALL_PUBKEY="$pubkey" \
+  "$shell" <"$install_sh" >"$tmp/out" 2>"$tmp/err"; then
   pass "install.sh read from stdin installs"
 else
   fail "install.sh read from stdin installs"
@@ -206,10 +229,79 @@ check "the file is unchanged" test "$(cat "$h/.local/bin/symdev")" = mine
 
 # --- an index of a schema this script does not know ------------------------------------
 sed 's/^schema = 1$/schema = 2/' "$tmp/index.good" >"$bucket/index.toml"
+resign "$bucket/index.toml"
 h=$tmp/home8
 mkdir -p "$h"
 if install "$h"; then fail "an unknown schema fails"; show; else pass "an unknown schema fails"; fi
 check "the error names the schema" contains "$tmp/err" "schema 2"
+cp "$tmp/index.good" "$bucket/index.toml"
+
+# --- the index's signature -------------------------------------------------------------
+# An `openssl` that reports 1.1.1, as an older system's does: install.sh cannot verify.
+mkdir -p "$tmp/old-openssl"
+printf '#!/bin/sh\necho "OpenSSL 1.1.1w  11 Sep 2023"\n' >"$tmp/old-openssl/openssl"
+chmod 755 "$tmp/old-openssl/openssl"
+old=$tmp/old-openssl:/usr/bin:/bin
+# refused <name> <home> [VAR=value…]: install.sh fails and installs nothing.
+refused() {
+  name=$1
+  h=$2
+  shift 2
+  mkdir -p "$h"
+  if install "$h" "$@"; then fail "$name"; show; else pass "$name"; fi
+  check "$name: nothing is installed" test ! -e "$h/.local"
+}
+# installs <name> <home> [VAR=value…]: install.sh succeeds.
+installs() {
+  name=$1
+  h=$2
+  shift 2
+  mkdir -p "$h"
+  if install "$h" "$@"; then pass "$name"; else fail "$name"; show; fi
+}
+not_verified="the index could not be verified"
+
+tail -n +2 "$tmp/index.good" >"$bucket/index.toml"
+refused "an unsigned index is refused" "$tmp/sig1"
+check "the error names the index and says unsigned" contains "$tmp/err" "${url}index.toml is unsigned"
+installs "without OpenSSL 3 an unsigned index installs" "$tmp/sig2" PATH="$old"
+check "without OpenSSL 3: a warning" contains "$tmp/err" "$not_verified"
+
+cp "$tmp/index.good" "$bucket/index.toml"
+printf '# a line added after signing\n' >>"$bucket/index.toml"
+refused "an index changed after signing is refused" "$tmp/sig3"
+check "the error says the signature does not verify" contains "$tmp/err" "does not verify"
+installs "without OpenSSL 3 a changed index cannot be told from a good one" "$tmp/sig4" PATH="$old"
+check "without OpenSSL 3, signed: a warning" contains "$tmp/err" "$not_verified"
+
+cp "$tmp/index.good" "$bucket/index.toml"
+refused "an index signed by another key is refused" "$tmp/sig5" SYMDEV_INSTALL_PUBKEY="$other"
+check "another key: the signature does not verify" contains "$tmp/err" "does not verify"
+refused "without SYMDEV_INSTALL_PUBKEY the project key decides" "$tmp/sig6" SYMDEV_INSTALL_PUBKEY=
+check "the project key: the signature does not verify" contains "$tmp/err" "does not verify"
+installs "either of two keys verifies (a rotation)" "$tmp/sig7" SYMDEV_INSTALL_PUBKEY="$other $pubkey"
+refused "a SYMDEV_INSTALL_PUBKEY that is not a key is refused" "$tmp/sig8" SYMDEV_INSTALL_PUBKEY=AAAA
+check "the error names SYMDEV_INSTALL_PUBKEY" contains "$tmp/err" "SYMDEV_INSTALL_PUBKEY"
+# the all-zero point: a degenerate key OpenSSL still loads, which verifies nothing
+refused "an all-zero key verifies nothing" "$tmp/sig10" \
+  SYMDEV_INSTALL_PUBKEY="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+check "the all-zero key: does not verify" contains "$tmp/err" "does not verify"
+
+{
+  echo '# symdev-signature: ed25519 not-base64!'
+  tail -n +2 "$tmp/index.good"
+} >"$bucket/index.toml"
+refused "a malformed signature line is refused, even without OpenSSL 3" "$tmp/sig9" PATH="$old"
+check "the error says malformed" contains "$tmp/err" "malformed signature line"
+{
+  echo '# symdev-signature: ed25519 '
+  tail -n +2 "$tmp/index.good"
+} >"$bucket/index.toml"
+refused "an empty signature is malformed, even without OpenSSL 3" "$tmp/sig11" PATH="$old"
+check "empty: the error says malformed" contains "$tmp/err" "malformed signature line"
+cp "$tmp/index.good" "$bucket/index.toml"
+refused "an overriding key that did not sign is named as such" "$tmp/sig12" SYMDEV_INSTALL_PUBKEY="$other"
+check "the error names SYMDEV_INSTALL_PUBKEY, not the project key" contains "$tmp/err" "does not verify with SYMDEV_INSTALL_PUBKEY"
 cp "$tmp/index.good" "$bucket/index.toml"
 
 # --- busybox only: wget instead of curl, no flock --------------------------------------
@@ -218,7 +310,7 @@ if command -v busybox >/dev/null 2>&1; then
   for applet in $(busybox --list); do ln -s "$(command -v busybox)" "$tmp/busybox/$applet"; done
   h=$tmp/home9
   mkdir -p "$h"
-  if env -i HOME="$h" PATH="$tmp/busybox" SYMDEV_INSTALL_URL="$url" \
+  if env -i HOME="$h" PATH="$tmp/busybox" SYMDEV_INSTALL_URL="$url" SYMDEV_INSTALL_PUBKEY="$pubkey" \
     "$tmp/busybox/sh" "$install_sh" >"$tmp/out" 2>"$tmp/err"; then
     pass "busybox sh with wget installs"
   else
@@ -226,6 +318,7 @@ if command -v busybox >/dev/null 2>&1; then
     show
   fi
   check "busybox: the link runs 0.12.0" test "$("$h/.local/bin/symdev")" = "symdev stub 0.12.0"
+  check "busybox has no openssl: a warning" contains "$tmp/err" "$not_verified"
 else
   echo "ok - busybox sh with wget installs # SKIP no busybox"
 fi

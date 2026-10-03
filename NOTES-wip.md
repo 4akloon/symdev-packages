@@ -1,3 +1,34 @@
+# WIP: G2 signed indexes — branch `index-signing`
+
+Brief (lead, 2026-10-03): `publish` signs every index it writes with `PUBLISH_SIGNING_KEY`
+(symdev-sdk's `SignedIndex`), a `publish sign-index --bucket public|private` re-signs the live
+indexes, install.sh verifies with OpenSSL 3, CI passes the secret to upload jobs only. Never
+push or merge. symdev side: `~/worktrees/symdev/index-signing` (its
+`docs/research/wip/v0.2.md`, section G2, is the main record).
+
+- `publish/Cargo.toml` takes symdev-sdk from that worktree by **path** for now (the lead
+  switches it to the v0.2.0 tag at release); baseline with it: cargo test 53 + 9, install.sh
+  test 39 ok under dash (40 with SYMDEV_TEST_BINARY).
+- Publisher signs (step 2): `IndexKeys` (publish/src/index_keys.rs) = signing key + trusted
+  keys (built-in + own); `publish` refuses to extend an index whose signature does not verify
+  and, on upload, an unsigned one (dry run: warning); `sign-index --bucket … [--dry-run]`
+  signs the stored body byte for byte, lists the archives, skips an upload that changes
+  nothing. cargo test 75 + 9, clippy 0, fmt ok.
+- Checked for real (read-only): `sign-index --bucket public --dry-run` against the live r2.dev
+  index (anonymous GET, PUBLISH_SIGNING_KEY from keys.env): body = live index byte for byte;
+  `openssl pkeyutl -verify -rawin` with the embedded PEM: Verified; one byte appended:
+  Failure. symdev (index-signing build) with a file:// mirror of it and `key = "builtin"`:
+  lists gcce/rust-sdk/symdev; tampered or unsigned → warning naming the URL. Nothing uploaded.
+- install.sh (17770b4), CI + README (ea60a95).
+- Review (2026-10-03, no critical): fixed — sign-index signs an unsigned index only with
+  `--accept-unsigned <sha256 its dry run printed>`; an upload's key must be in symdev's
+  `TrustedKeys::builtin()` (`IndexKeys::new(signer, clients)`, upload prints the signer's
+  fingerprint); `Unsigned` in its own file; `Settings` Debug redacts; ObjectKey message;
+  install.sh: empty signature = malformed, separate `verifiable`, awk reads the body,
+  "does not verify with SYMDEV_INSTALL_PUBKEY" when overridden. cargo test 80 + 9,
+  install.sh test 73 ok (dash, bash). Open: the path dependency (lead → v0.2.0 tag), and CI
+  must run install.sh.test on ubuntu-24.04's OpenSSL 3.0 before the new install.sh ships.
+
 # WIP: release prep — branch `release-prep`
 
 Brief (2026-10-02, from the lead): worktree `~/worktrees/symdev-packages/release-prep`; never

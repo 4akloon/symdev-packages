@@ -48,6 +48,7 @@ publish private <id> --from <dir> --recipe <recipe.toml> [--dry-run]
 publish public  <id> --from <prefix> --source-code <tar.gz> --recipe <recipe.toml> [--dry-run]
 publish file <path> --to <key> --bucket public|private --content-type <type> \
              --cache-control <value> [--dry-run]
+publish sign-index --bucket public|private [--accept-unsigned <sha256>] [--dry-run]
 ```
 
 `publish` packs the package reproducibly into `<sha256>.tar.gz` in the current directory,
@@ -55,6 +56,20 @@ checks the hash against the recipe, reads the bucket's `index.toml` (none yet = 
 refuses an id that is already there, then uploads the archive (and for `public` the source
 archive) and the index last. `--dry-run` uploads nothing and prints the index it would
 write.
+
+Every index is signed (symdev spec §14): its first line is `# symdev-signature: ed25519
+<base64>`, the project key's Ed25519 signature of the rest, which symdev and `install.sh`
+check with the public key they carry. `publish` signs the index it writes with
+`PUBLISH_SIGNING_KEY`: an upload needs it, and it must be a key symdev trusts (a stale or
+mistyped one would sign an index every client refuses); a dry run signs when it is set and
+says when it is not, or when symdev would not trust it. It extends only an index whose
+signature verifies: one that does not is refused, and an unsigned one is refused by an
+upload (a dry run warns), since otherwise the next publish would sign whatever someone
+holding the bucket's R2 key wrote. `publish sign-index` signs the bucket's current index as
+it is, byte for byte, after checking that any signature it has verifies and that it parses,
+and lists its archives first. It is the one way to accept an unsigned index (the indexes
+published before 0.2.0), and only for the exact bytes reviewed: its `--dry-run` prints the
+index's SHA-256, and the real run signs it only with `--accept-unsigned <that sha256>`.
 
 `publish file` puts one file as it is at a fixed key (`install.sh` at the public bucket's
 root), signed like the other uploads, with the two headers given; it neither reads nor
@@ -66,8 +81,11 @@ segment, or be `index.toml`. `--dry-run` hashes the file and says what it would 
 |---|---|
 | `PUBLISH_PRIVATE_URL`, `PUBLISH_PUBLIC_URL` | the buckets' S3 endpoints, e.g. `https://<account>.r2.cloudflarestorage.com/symdev-private/` |
 | `PUBLISH_ACCESS_KEY_ID`, `PUBLISH_SECRET_ACCESS_KEY` | the publisher key (R2 object read & write) |
+| `PUBLISH_SIGNING_KEY` | the index signing key: the base64 of the project key's 32-byte Ed25519 seed (the owner's `~/.config/symdev/keys.env`) |
 
-A dry run needs none of them; with the bucket URL set it also reads the current index.
+A dry run needs none of them; with the bucket URL set it also reads the current index, and
+with the signing key it signs the index it prints. `publish file` never needs the signing
+key.
 
 The SDK is published by the owner from their own copy:
 
@@ -90,8 +108,14 @@ It takes the highest `symdev;<ver>` with an `x86_64-linux` archive in `index.tom
 its SHA-256 and size, extracts it into `$SYMDEV_HOME/symdev/<ver>/` (default
 `~/.local/share/symdev`) with the receipt symdev writes (`symdev sdk list` shows it) and
 links `~/.local/bin/symdev`. Re-running it updates; `SYMDEV_INSTALL_URL` points it at
-another bucket. `sh tests/install.sh.test [<shell>]` runs it against a local fake bucket
-(python3's `http.server`, index and archives made by `publish --dry-run`).
+another bucket. With OpenSSL 3 it first verifies the index's signature with the project's
+public key, written into the script, and refuses an index that is unsigned or does not
+verify; without OpenSSL 3 it warns that the index could not be verified and goes on (HTTPS
+and SHA-256 still apply). `SYMDEV_INSTALL_PUBKEY` replaces the key (base64 Ed25519 public
+keys, space-separated), for tests and for mirrors signed with their own key. `sh
+tests/install.sh.test [<shell>]` runs it against a local fake bucket (python3's
+`http.server`, index and archives made by `publish --dry-run`, signed with a throwaway
+key; openssl 3 re-signs what a test edits).
 
 ## CI
 
@@ -107,4 +131,5 @@ notices of every crate, bundled C library and toolchain runtime the static binar
 `tests/install.sh.test` under dash and bash, the generator's tests and `cargo test` on
 changes to what they cover. Settings: repository variable `PUBLIC_READ_URL` (the
 public bucket's r2.dev URL, read by dry runs); environment `publish` with variable
-`PUBLISH_PUBLIC_URL` and secrets `PUBLISH_ACCESS_KEY_ID`, `PUBLISH_SECRET_ACCESS_KEY`.
+`PUBLISH_PUBLIC_URL` and secrets `PUBLISH_ACCESS_KEY_ID`, `PUBLISH_SECRET_ACCESS_KEY` and
+`PUBLISH_SIGNING_KEY`, the last given only to the steps that upload an index.
