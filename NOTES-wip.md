@@ -16,7 +16,7 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
 | sdk-casefold | done: 6 tests = the Python's 6 (+ mutation: last-wins tie fails); real SDK identical |
 | sdk-free | done: 8 unit + 1 CLI test = the Python's 9; rehearsal artifact identical |
 | target2-abs32 | done on symdev's `Target2Rewrite` (rl-driver c982182, by path): 13 tests = the Python's 13; real objects identical |
-| serve (install test) | todo |
+| serve (install test) | done: 4 tests; install.sh.test 73 ok under dash and bash with it |
 | scripts/workflows/README | todo |
 | equivalence runs | todo |
 
@@ -101,6 +101,11 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
   entities other than amp/lt/gt/quot/apos and printable numeric ones are an error (the pages
   hold only &#34; &#39; &#60; &#62;). cargo gets the canonical manifest path (the Python
   passed it as given while running in the checkout, wrong for a relative path).
+- `pkgtools serve <dir>` (hidden): 127.0.0.1, free port printed on stdout, HTTP/1.0 GET/HEAD,
+  404 for dirs/missing/`..`, one connection at a time (10 s read timeout), logs
+  `"GET /x HTTP/1.1" 200 <bytes>` to stderr. install.sh.test builds publish + pkgtools,
+  reads target_directory with sed (no python), waits for the port file. dash 73 ok, bash 73
+  ok, busybox wget case ok; a probe showed gets() counts real requests (symdev/ 1, index 7).
 
 ## Dead ends
 

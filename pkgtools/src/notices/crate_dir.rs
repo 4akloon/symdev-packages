@@ -22,10 +22,6 @@ pub struct Crate {
 }
 
 impl Crate {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
     /// A licence, notice or copyright file by its name: LICENSE*, LICENCE*, COPYING*,
     /// NOTICE*, COPYRIGHT*, in any case.
     pub fn is_notice(name: &str) -> bool {

@@ -16,7 +16,7 @@ fn walks_normal_dependencies_and_leaves_out_workspace_members() {
     let tmp = tempfile::tempdir().unwrap();
     let graph = DependencyGraph::new(&graph_fixture(tmp.path()).metadata()).unwrap();
     let (crates, members) = graph.third_party("app").unwrap();
-    let names: Vec<&str> = crates.iter().map(|c| c.name()).collect();
+    let names: Vec<&str> = crates.iter().map(|c| c.name.as_str()).collect();
     assert_eq!(names, ["a", "d", "e"]);
     assert_eq!(members, 2);
 }

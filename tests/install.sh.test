@@ -1,9 +1,9 @@
 #!/bin/sh
-# install.sh against a fake public bucket: python3 -m http.server on 127.0.0.1, holding
-# packages and an index.toml written by `publish public … --dry-run`, so the index has the
-# exact format the publisher writes, signed as it signs (with a throwaway key, which
-# install.sh is given through SYMDEV_INSTALL_PUBKEY). Needs openssl 3 (re-signing an index
-# a test edits) and python3.
+# install.sh against a fake public bucket: `pkgtools serve` on 127.0.0.1, holding packages
+# and an index.toml written by `publish public … --dry-run`, so the index has the exact
+# format the publisher writes, signed as it signs (with a throwaway key, which install.sh is
+# given through SYMDEV_INSTALL_PUBKEY). Needs cargo (it builds both) and openssl 3
+# (re-signing an index a test edits).
 #
 #   sh tests/install.sh.test [<shell>]
 #
@@ -47,21 +47,24 @@ pubkey=6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=
 other=E5j2LG0aRXxRumpLXz29L2n8qTIWIY3ImX5Ba9F9k8o=
 
 # --- the bucket ------------------------------------------------------------------------
-cargo build --quiet --locked --manifest-path "$root/Cargo.toml" -p publish
-publish_bin=$(cargo metadata --format-version 1 --no-deps --manifest-path "$root/Cargo.toml" |
-  python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')/debug/publish
-port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
-url=http://127.0.0.1:$port/
+cargo build --quiet --locked --manifest-path "$root/Cargo.toml" -p publish -p pkgtools
+target_dir=$(cargo metadata --format-version 1 --no-deps --manifest-path "$root/Cargo.toml" |
+  sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')
+[ -n "$target_dir" ] || { echo "cargo metadata names no target_directory" >&2; exit 1; }
+publish_bin=$target_dir/debug/publish
 bucket=$tmp/bucket
 mkdir -p "$bucket" "$tmp/pack" "$tmp/trees"
-python3 -m http.server "$port" --bind 127.0.0.1 --directory "$bucket" >"$tmp/http.log" 2>&1 &
+# It listens on a free port of 127.0.0.1, prints the port, and logs each request to stderr
+# as http.server did ("GET /<path> HTTP/1.1" <code> <bytes>), which gets() counts.
+"$target_dir/debug/pkgtools" serve "$bucket" >"$tmp/port" 2>"$tmp/http.log" &
 server=$!
 i=0
-until curl -s -o /dev/null "$url"; do
+until [ -s "$tmp/port" ] && curl -s -o /dev/null "http://127.0.0.1:$(cat "$tmp/port")/"; do
   i=$((i + 1))
   [ "$i" -lt 100 ] || { echo "the fake bucket did not start" >&2; exit 1; }
   sleep 0.1
 done
+url=http://127.0.0.1:$(cat "$tmp/port")/
 printf 'source' >"$tmp/source.tar.gz"
 
 # resign <index>: signs the body of <index> (after its signature line) again, as publish

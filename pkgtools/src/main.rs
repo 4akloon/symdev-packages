@@ -9,11 +9,12 @@ mod notices;
 mod py_path;
 mod py_text;
 mod sdk_free;
+mod serve;
 mod target2;
 mod tool_error;
 mod tree_walk;
 
-use std::io;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -23,6 +24,7 @@ use crate::casefold::IncludeOverlay;
 use crate::closure::ClosureTool;
 use crate::notices::NoticesTool;
 use crate::sdk_free::SdkFreeTool;
+use crate::serve::StaticServer;
 use crate::target2::Target2Tool;
 
 #[derive(Parser)]
@@ -81,6 +83,13 @@ enum Command {
     },
     /// Rewrite every R_ARM_TARGET2 relocation of GCCE objects into R_ARM_ABS32, in place
     /// (symdev experiment 109): only the type byte of each relocation entry changes.
+    /// The install test's fake bucket: serve <dir> on 127.0.0.1 at a free port, print the
+    /// port, log each request to stderr; runs until killed.
+    #[command(hide = true)]
+    Serve {
+        #[arg(value_name = "dir")]
+        root: PathBuf,
+    },
     #[command(name = "target2-abs32")]
     Target2Abs32 {
         #[arg(value_name = "object.o", required = true)]
@@ -108,6 +117,15 @@ fn main() -> ExitCode {
         Command::RuntimeClosure { map, shipped } => {
             ClosureTool::run(&map, &shipped, &mut out, &mut err)
         }
+        Command::Serve { root } => match StaticServer::bind(&root) {
+            Ok(server) => {
+                let _ = writeln!(out, "{}", server.port());
+                let _ = out.flush();
+                server.serve(err);
+                0
+            }
+            Err(e) => report(Err(e)),
+        },
         Command::Target2Abs32 { objects } => Target2Tool::run(&objects, &mut out, &mut err),
         Command::SdkFree { sdk, paths } => SdkFreeTool::run(&sdk, &paths, &mut out, &mut err),
         Command::SdkCasefold { include, out: dir } => {
