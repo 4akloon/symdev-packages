@@ -6,7 +6,8 @@ installs by itself (`symdev sdk install`, or the first `symdev build`). Design: 
 
 This repository never holds a proprietary file: no SDK, firmware, `.sis`, `.sisx`, `.cer`
 or `.key` bytes. The SDK recipe lists paths and pins a hash; the bytes stay on the owner's
-machine and in the private bucket.
+machine and in the private bucket. CI installs the SDK on its runner only to compile the
+Rust SDK's prebuilt shims, and checks that no file of it reaches an artifact.
 
 ## Layout
 
@@ -14,12 +15,18 @@ machine and in the private bucket.
 recipes/gcce/12.1.0/recipe.toml          # sources + sha256; built by build.sh in CI
 recipes/gcce/12.1.0/build.sh
 recipes/sdk/s60-3rd-fp2/1.1/recipe.toml  # paths taken from the SDK, pinned archive sha256
-recipes/symdev/0.1.0/recipe.toml         # symdev;0.1.0 + rust-sdk;0.1.0 from the tag v0.1.0
-recipes/symdev/0.1.0/build.sh
+recipes/symdev/<ver>/recipe.toml         # symdev;<ver> + rust-sdk;<ver> from the tag v<ver>
+recipes/symdev/<ver>/build.sh            #   (0.1.0, 0.2.0 published; 0.3.0 waits for its tag)
+recipes/symdev/0.3.0/prebuilt.sh         # rust-sdk's prebuilt/ (from 0.3.0)
 install.sh                               # installs the newest symdev from the public bucket
 publish/                                 # the publisher (Rust, on symdev-sdk)
 tools/third_party_notices.py             # THIRD-PARTY-NOTICES.txt of the static symdev
-tests/                                   # install.sh.test, the notices generator's tests
+tools/target2_abs32.py                   # prebuilt.sh: R_ARM_TARGET2 -> R_ARM_ABS32
+tools/runtime_closure.py                 # prebuilt.sh: the GCC runtime members a link takes
+tools/sdk_casefold.py                    # prebuilt.sh: case-insensitive SDK include overlay
+tools/sdk_free.py                        # symdev.yml: no SDK file in the artifact
+tools/notices/gcc-12.1.0/                # COPYING3, COPYING.RUNTIME shipped in prebuilt/
+tests/                                   # install.sh.test, the Python tools' tests
 .github/workflows/                       # build.yml (PRs, no upload), publish.yml (main),
                                          # symdev.yml, tests.yml
 ```
@@ -40,6 +47,63 @@ A build that makes several packages (the symdev release makes `symdev` and `rust
 one tag) keeps `git`, `tag`, `build` and `[[source]]` at the top and gives each package a
 `[[package]]` table with its own `id`, `license`, `host`, `include` and `sha256`. `publish`
 takes the package named by its `<id>` argument and checks all of them.
+
+## The prebuilt set (rust-sdk from 0.3.0)
+
+From `rust-sdk;0.3.0` the Rust SDK carries `symbian-rs/prebuilt/`: symdev's C++ shims
+compiled once for every Rust application, and the four GCC runtime members they need, so
+that symdev can link a Rust application with rust-lld and no GCCE on the machine (symdev
+experiment 109). About 90 KB:
+
+| File | What | Licence |
+|---|---|---|
+| `lib/libsymrs.a` | `symbian-rs/shims/common/*.cpp`, linked into every Rust application | MIT |
+| `lib/libsymrs_ui.a` | `symbian-rs/shims/s60/*.cpp`, for an `[ui]` (Avkon) application | MIT |
+| `lib/libsupc++.a` | `del_ops.o`, `eh_personality.o` of GCC 12.1.0's libsupc++ | GPL-3.0-or-later WITH GCC-exception-3.1 |
+| `lib/libgcc.a` | `pr-support.o`, `_thumb1_case_uqi.o` of GCC 12.1.0's libgcc | GPL-3.0-or-later WITH GCC-exception-3.1 |
+| `NOTICE`, `COPYING3`, `COPYING.RUNTIME` | what each file is, its licence, where its source is | |
+
+Hence the package's licence, `MIT AND GPL-3.0-or-later WITH GCC-exception-3.1`. The runtime
+members are GCC's own, only stripped of debug information; their Corresponding Source is the
+source archive of `gcce;12.1.0` in the same bucket (the GCC 12.1.0 tarball and the recipe
+that built GCCE), which `NOTICE` names. The shims are compiled against the S60 SDK's
+headers, so their objects hold what those headers inline, but no file of the SDK.
+`symrs_avkon.o` is compiled without `SYMRS_UID3`: it reads the application's UID3 from the
+symbol `symrs_uid3`, which the application's rust-lld link defines
+(`--defsym=symrs_uid3=0x<uid3>`); symdev's own GNU ld link cannot, so it keeps compiling that
+shim per application with the define.
+
+`recipes/symdev/<ver>/prebuilt.sh <symdev-src> <gcce> <epocroot> <out-dir>` makes it after
+`build.sh`, from the tag's tree, the installed `gcce;12.1.0` and the installed
+`sdk;s60-3rd-fp2;1.1`:
+
+1. it compiles each shim with the argv of symdev's own GNU build (GcceBuild's recorded line,
+   `RustBuild::SHIM_OPTIONS`, which it checks against the tag, and the SDK's case-fold
+   overlay, `tools/sdk_casefold.py`), less `-DSYMRS_UID3`; the objects are byte-identical to
+   the ones symdev compiles per application;
+2. rewrites their `R_ARM_TARGET2` relocations to `R_ARM_ABS32` (`tools/target2_abs32.py`);
+3. takes the four members out of GCCE's `libsupc++.a` and `libgcc.a` and strips their debug
+   information;
+4. links every shim with GCCE's `ld` against the SDK's import libraries and GCCE's full
+   runtime libraries, and fails unless that link took exactly the four members
+   (`tools/runtime_closure.py`) and the same link against `lib/` alone leaves the same
+   symbols undefined. A shim that starts to need another runtime member fails here.
+
+The archives are written with `ar crD`, so the same inputs give the same bytes. A compile
+error shows GCC's diagnostics without the source lines it quotes, which may be the SDK's.
+`symdev.yml` runs it (see CI); by hand, in the directory where `build.sh` ran (it holds the
+tag's tree as `./symdev`), with this repository at `$PACKAGES`:
+
+```bash
+symdev sdk install 'gcce;12.1.0' 'sdk;s60-3rd-fp2;1.1'   # the SDK needs the private source
+home=${SYMDEV_HOME:-~/.local/share/symdev}
+bash "$PACKAGES/recipes/symdev/0.3.0/prebuilt.sh" symdev "$home/gcce/12.1.0" \
+  "$home/sdk/s60-3rd-fp2/1.1" <build.sh's out-dir>/rust-sdk/symbian-rs/prebuilt
+```
+
+The recipe's `include` names `symbian-rs/prebuilt`, so `publish` does not pack a rust-sdk
+without it (an entry that matches nothing is refused), and `build.sh` refuses a tag that
+tracks `symbian-rs/prebuilt` itself.
 
 ## Publishing
 
@@ -124,12 +188,22 @@ key; openssl 3 re-signs what a test edits).
 hand) does the same and uploads. `symdev.yml` does both for `recipes/symdev/<ver>/`: it
 builds a static symdev (musl) from the recipe's tag, dry-runs both packages on every run,
 and on `main` (or by hand, with the version) uploads `rust-sdk;<ver>`, then `symdev;<ver>`,
-then `install.sh`; a manual run with `install_sh_only` uploads only `install.sh`. The symdev
+then `install.sh`; a manual run with `install_sh_only` uploads only `install.sh`. For a
+recipe with `prebuilt.sh` (0.3.0 on) the build job also writes a `sources.toml` with the
+private source (`key = "builtin"`), installs `gcce;12.1.0` and `sdk;s60-3rd-fp2;1.1` under
+`$RUNNER_TEMP` with the symdev it just built (the only step given the reader key), runs
+`prebuilt.sh`, and before the upload checks with `tools/sdk_free.py` that no file of the
+artifact, nor of an archive in it, has the bytes of an SDK file or a path through `epoc32/`.
+The artifact is `$RUNNER_TEMP/artifact` alone: the build's tar and the packed archives;
+nothing is cached. The symdev
 package holds `bin/symdev` and `share/doc/symdev/{LICENSE,THIRD-PARTY-NOTICES.txt}`, the
 notices of every crate, bundled C library and toolchain runtime the static binary links
 (`tools/third_party_notices.py`; build.sh fails without them). `tests.yml` runs
-`tests/install.sh.test` under dash and bash, the generator's tests and `cargo test` on
+`tests/install.sh.test` under dash and bash, the Python tools' tests and `cargo test` on
 changes to what they cover. Settings: repository variable `PUBLIC_READ_URL` (the
 public bucket's r2.dev URL, read by dry runs); environment `publish` with variable
 `PUBLISH_PUBLIC_URL` and secrets `PUBLISH_ACCESS_KEY_ID`, `PUBLISH_SECRET_ACCESS_KEY` and
-`PUBLISH_SIGNING_KEY`, the last given only to the steps that upload an index.
+`PUBLISH_SIGNING_KEY`, the last given only to the steps that upload an index; for
+`prebuilt.sh`, repository variable `SYMDEV_PRIVATE_SOURCE_URL` (the private bucket's S3
+URL) and repository secrets `SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID` and
+`SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY` (its reader key).
