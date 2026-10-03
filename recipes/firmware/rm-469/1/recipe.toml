@@ -12,7 +12,9 @@
 #     --recipe recipes/firmware/rm-469/1/recipe.toml
 #
 # Drive Z is in the state EKA2L1 leaves it after the first start: Z:\sys\bin\avkonfep.dll
-# moved to avkonfep.dll.bak (symdev experiment 115 §1.3).
+# moved to avkonfep.dll.bak (symdev experiment 115 §1.3), and Z:\stubcached present. symdev
+# links a profile's ROM and drive Z to the installed package, and EKA2L1 then writes nothing
+# into them (experiment 115 §3): without stubcached it would write that file on Z.
 id = "firmware;rm-469;1"
 license = "LicenseRef-Nokia-firmware"
 host = "any"
