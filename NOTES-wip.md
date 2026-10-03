@@ -15,7 +15,7 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
 | runtime-closure | done: 12 tests = the Python's 12; real maps identical (see Facts) |
 | sdk-casefold | done: 6 tests = the Python's 6 (+ mutation: last-wins tie fails); real SDK identical |
 | sdk-free | done: 8 unit + 1 CLI test = the Python's 9; rehearsal artifact identical |
-| target2-abs32 | todo (symdev's API not in rl-driver yet: 22c840a has notes only) |
+| target2-abs32 | done on symdev's `Target2Rewrite` (rl-driver c982182, by path): 13 tests = the Python's 13; real objects identical |
 | serve (install test) | todo |
 | scripts/workflows/README | todo |
 | equivalence runs | todo |
@@ -79,6 +79,17 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
   bzip2/xz/zstd tars are refused (exit 2; the pipeline makes tar/gzip only), a damaged
   header after the first is an error (tarfile stops silently), an unreadable directory is
   an error (os.walk skips it). A tar cut exactly at a header boundary passes in both.
+- target2-abs32 = `symdev_elf2e32::Target2Rewrite::object` (rl-driver worktree, committed in
+  c982182; path dependency `../../../symdev/rl-driver/crates/symdev-elf2e32`, the lead
+  switches it to the v0.3.0 tag). The Python's 11 rewrite/refusal tests pass on it
+  unchanged (its messages contain the Python's: "ELF type 2, not a relocatable object",
+  "section 1: contents past the end of the file"); it also refuses any section past EOF,
+  not only relocation sections. Equivalence (`~/src/pkgtools-scratch/target2/`): the
+  rehearsal's prebuilt.sh run with a wrapper that saves each object before the Python
+  rewrite (10 shims + 4 runtime members, published GCCE + rehearsal SDK): pkgtools on
+  copies of them → all 14 byte-identical to the Python's rewritten objects, per-file counts
+  identical (10 relocations: active 1, f32 1, leave 1, avkon 1, list 3, note 1, query 2),
+  and that run's lib/*.a = run1's lib/*.a (experiment 109's verified set, 90 376 B).
 
 ## Dead ends
 

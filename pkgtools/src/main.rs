@@ -7,6 +7,7 @@ mod closure;
 mod py_path;
 mod py_text;
 mod sdk_free;
+mod target2;
 mod tool_error;
 mod tree_walk;
 
@@ -19,6 +20,7 @@ use clap::{Parser, Subcommand};
 use crate::casefold::IncludeOverlay;
 use crate::closure::ClosureTool;
 use crate::sdk_free::SdkFreeTool;
+use crate::target2::Target2Tool;
 
 #[derive(Parser)]
 #[command(name = "pkgtools", version)]
@@ -57,6 +59,13 @@ enum Command {
         #[arg(value_name = "path", required = true)]
         paths: Vec<PathBuf>,
     },
+    /// Rewrite every R_ARM_TARGET2 relocation of GCCE objects into R_ARM_ABS32, in place
+    /// (symdev experiment 109): only the type byte of each relocation entry changes.
+    #[command(name = "target2-abs32")]
+    Target2Abs32 {
+        #[arg(value_name = "object.o", required = true)]
+        objects: Vec<PathBuf>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -66,6 +75,7 @@ fn main() -> ExitCode {
         Command::RuntimeClosure { map, shipped } => {
             ClosureTool::run(&map, &shipped, &mut out, &mut err)
         }
+        Command::Target2Abs32 { objects } => Target2Tool::run(&objects, &mut out, &mut err),
         Command::SdkFree { sdk, paths } => SdkFreeTool::run(&sdk, &paths, &mut out, &mut err),
         Command::SdkCasefold { include, out: dir } => {
             report(IncludeOverlay::ensure(&include, &dir).map(|o| o.display().to_string()))

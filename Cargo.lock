@@ -475,6 +475,7 @@ dependencies = [
  "flate2",
  "serde_json",
  "sha2",
+ "symdev-elf2e32",
  "tar",
  "tempfile",
 ]
@@ -710,9 +711,24 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "symdev-core"
 version = "0.2.0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
+name = "symdev-core"
+version = "0.2.0"
 source = "git+https://github.com/4akloon/symdev?tag=v0.2.0#7ca94bbae7d8262fb3b6029c7a0077bdc2929d1a"
 dependencies = [
  "thiserror",
+]
+
+[[package]]
+name = "symdev-elf2e32"
+version = "0.2.0"
+dependencies = [
+ "symdev-core 0.2.0",
+ "symdev-uidcrc",
 ]
 
 [[package]]
@@ -736,7 +752,7 @@ dependencies = [
  "hmac",
  "serde",
  "sha2",
- "symdev-core",
+ "symdev-core 0.2.0 (git+https://github.com/4akloon/symdev?tag=v0.2.0)",
  "symdev-manifest",
  "tar",
  "thiserror",
@@ -744,6 +760,10 @@ dependencies = [
  "ureq",
  "zeroize",
 ]
+
+[[package]]
+name = "symdev-uidcrc"
+version = "0.2.0"
 
 [[package]]
 name = "syn"
