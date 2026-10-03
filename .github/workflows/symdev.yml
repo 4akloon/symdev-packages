@@ -1,6 +1,8 @@
 # The prebuilt symdev and its Rust SDK (symdev spec 2026-10-02 §12): recipes/symdev/<ver>/
 # names a tag of 4akloon/symdev; build.sh builds a static x86_64 musl symdev from it and
-# stages the tag's tree. Every run packs both packages with `publish --dry-run` against the
+# stages the tag's tree. From 0.3.0 the recipe also has prebuilt.sh, which compiles the
+# rust-sdk's prebuilt/ (symdev experiment 109) with GCCE and the S60 SDK that the symdev just
+# built installs here. Every run packs both packages with `publish --dry-run` against the
 # public index (an id already published fails here); a push to main (merging the recipe is
 # the release) or a manual run then uploads rust-sdk;<ver> and, after it, symdev;<ver>, so
 # the index never offers a symdev whose Rust SDK is missing.
@@ -14,7 +16,11 @@
 # (main only) with variable PUBLISH_PUBLIC_URL and secrets PUBLISH_ACCESS_KEY_ID,
 # PUBLISH_SECRET_ACCESS_KEY and PUBLISH_SIGNING_KEY (the index signing key, symdev spec §14:
 # given only to the two steps that write the index; the dry runs print an unsigned index and
-# the install.sh uploads do not touch it).
+# the install.sh uploads do not touch it). For prebuilt.sh, the build job also needs
+# repository variable SYMDEV_PRIVATE_SOURCE_URL (the private bucket's S3 URL) and repository
+# secrets SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID and SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY (the
+# private bucket's reader key, the one symdev's CI has), given only to the step that installs
+# the SDK.
 #
 # install.sh (spec §12) lives at the public bucket's root: publish-symdev uploads it last,
 # after symdev;<ver> is in the index, and a manual run with `install_sh_only` uploads only
@@ -55,6 +61,12 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.recipe.outputs.version }}
+    env:
+      # What prebuilt.sh compiles with: the GCCE its GCC version check expects, and the SDK
+      # symdev builds for the E52 with (symdev's pins). Installed at
+      # $SYMDEV_HOME/<id with ; as />.
+      GCCE_ID: "gcce;12.1.0"
+      SDK_ID: "sdk;s60-3rd-fp2;1.1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -94,6 +106,9 @@ jobs:
             exit 1
           fi
           echo "version=$versions" >> "$GITHUB_OUTPUT"
+          if [ -f "recipes/symdev/$versions/prebuilt.sh" ]; then
+            echo "prebuilt=true" >> "$GITHUB_OUTPUT"
+          fi
 
       # musl-gcc: ring and libz-sys compile C for the musl target (cc-rs finds musl-gcc).
       - name: Install musl-tools
@@ -115,16 +130,70 @@ jobs:
           cd "$RUNNER_TEMP/work"
           bash "$GITHUB_WORKSPACE/recipes/symdev/$VERSION/build.sh" "$RUNNER_TEMP/out"
 
+      # prebuilt.sh's toolchain: GCCE from the public bucket, the S60 SDK from the owner's
+      # private one, both installed by the symdev just built (a symdev from 0.2.0 on reads
+      # `key = "builtin"`: the private index must be signed by symdev's own key). Everything
+      # goes under $RUNNER_TEMP/toolchain, outside the workspace and outside out/, and nothing
+      # is cached: the SDK's licence does not let it be passed on, so it must not reach the
+      # artifact or a cache that a pull request could restore.
+      - name: Configure the private source
+        if: steps.recipe.outputs.prebuilt == 'true'
+        env:
+          URL: ${{ vars.SYMDEV_PRIVATE_SOURCE_URL }}
+        run: |
+          if [ -z "$URL" ]; then
+            echo "::error::repository variable SYMDEV_PRIVATE_SOURCE_URL is not set; prebuilt.sh needs the S60 SDK from the private source"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/toolchain/config/symdev"
+          printf '[[source]]\nname = "private"\nurl = "%s"\nauth = "s3"\nkey = "builtin"\n' "$URL" \
+            > "$RUNNER_TEMP/toolchain/config/symdev/sources.toml"
+
+      # The only step that holds the reader key, and it runs only the symdev just built: the
+      # build scripts of third-party crates ran in the step before, without it.
+      - name: Install GCCE and the S60 SDK
+        if: steps.recipe.outputs.prebuilt == 'true'
+        env:
+          SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID: ${{ secrets.SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID }}
+          SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY: ${{ secrets.SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY }}
+        run: |
+          if [ -z "$SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID" ]; then
+            echo "::error::no reader key of the private source (secret SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID; a fork gets none); prebuilt.sh needs the S60 SDK"
+            exit 1
+          fi
+          export SYMDEV_HOME="$RUNNER_TEMP/toolchain/home" \
+            XDG_CONFIG_HOME="$RUNNER_TEMP/toolchain/config" \
+            XDG_CACHE_HOME="$RUNNER_TEMP/toolchain/cache"
+          "$RUNNER_TEMP/out/symdev/bin/symdev" sdk install "$GCCE_ID" "$SDK_ID"
+
+      # Writes out/rust-sdk/symbian-rs/prebuilt (lib/ and the notices); its work files, the
+      # SDK's case-fold overlay among them, stay in $RUNNER_TEMP/work/prebuilt-work.
+      - name: Build rust-sdk's prebuilt set
+        if: steps.recipe.outputs.prebuilt == 'true'
+        env:
+          VERSION: ${{ steps.recipe.outputs.version }}
+        run: |
+          home=$RUNNER_TEMP/toolchain/home
+          cd "$RUNNER_TEMP/work"
+          bash "$GITHUB_WORKSPACE/recipes/symdev/$VERSION/prebuilt.sh" symdev \
+            "$home/${GCCE_ID//;//}" "$home/${SDK_ID//;//}" \
+            "$RUNNER_TEMP/out/rust-sdk/symbian-rs/prebuilt"
+
+      # publish writes the archive into its current directory: $RUNNER_TEMP/artifact/packed,
+      # beside the build's tar, so that directory is all the artifact takes.
       - name: Pack both packages (dry run)
         env:
           VERSION: ${{ steps.recipe.outputs.version }}
           PUBLISH_PUBLIC_URL: ${{ vars.PUBLIC_READ_URL }}
         run: |
+          mkdir -p "$RUNNER_TEMP/artifact/packed"
+          cd "$RUNNER_TEMP/artifact/packed"
           for kind in rust-sdk symdev; do
-            cargo run --release --locked -p publish -- public "$kind;$VERSION" \
+            cargo run --release --locked --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" \
+              -p publish -- public "$kind;$VERSION" \
               --from "$RUNNER_TEMP/out/$kind" \
               --source-code "$RUNNER_TEMP/out/symdev-$VERSION-source.tar.gz" \
-              --recipe "recipes/symdev/$VERSION/recipe.toml" --dry-run
+              --recipe "$GITHUB_WORKSPACE/recipes/symdev/$VERSION/recipe.toml" --dry-run
           done
 
       # The command publish-symdev ends with, checked here so a mistake shows up in the PR.
@@ -136,14 +205,24 @@ jobs:
 
       # An artifact does not keep file modes; a tar does (bin/symdev stays executable).
       - name: Hand the build to the publish jobs
-        run: tar -C "$RUNNER_TEMP" -cf symdev-out.tar out
+        run: |
+          mkdir -p "$RUNNER_TEMP/artifact"
+          tar -C "$RUNNER_TEMP" -cf "$RUNNER_TEMP/artifact/symdev-out.tar" out
 
+      # Every file of the artifact, the members of its archives too, against every file of
+      # the SDK installed above: fails on the same bytes under any name, or a path through
+      # epoc32/. Only what prebuilt.sh compiled from the SDK's headers may leave the runner.
+      - name: Check that the artifact holds no file of the S60 SDK
+        if: steps.recipe.outputs.prebuilt == 'true'
+        run: |
+          python3 tools/sdk_free.py "$RUNNER_TEMP/toolchain/home/${SDK_ID//;//}" \
+            "$RUNNER_TEMP/artifact"
+
+      # symdev-out.tar and packed/<sha256>.tar.gz, nothing else.
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: symdev-build
-          path: |
-            symdev-out.tar
-            *.tar.gz
+          path: ${{ runner.temp }}/artifact/
           if-no-files-found: error
           retention-days: 7
 
