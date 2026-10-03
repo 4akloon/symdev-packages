@@ -123,6 +123,19 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
 - Gates (final state): cargo test --workspace: pkgtools 66 + 1 + 2, publish 86 + 9; clippy
   --workspace --all-targets -D warnings: 0; fmt --check ok; install.sh.test 73 ok under dash
   and bash (busybox case included).
+- Review (subagent, d7542d0..4d8f485): fixed — HtmlText cut an entity name at byte 32
+  (panic on a wide char; now the whole name, an unknown one is an error); a .tar.gz of
+  nothing passed (Python: exit 2) → "empty file" after decompressing; serve logged after
+  answering (gets() could race) → logs first, as http.server; target2-abs32's help sat on
+  `serve`; an unreadable crtbeginS.o read as "runtime changed" → I/O error naming it;
+  target2-abs32 writes `<o>.partial` + rename (no half-written object); PKGTOOLS may be a
+  command on PATH (`command -v`). Kept: Cli + Command in main.rs (clap's pattern, as in
+  publish/src/main.rs). Critical (not fixable here): the path dependency stops every cargo
+  command of the workspace in CI, `cargo run -p publish` of publish.yml/build.yml/symdev.yml
+  included — the branch must not merge before the switch to the v0.3.0 tag. Re-run after
+  the fixes: tests pkgtools 69 + 1 + 2, publish 86 + 9; clippy -D warnings 0; install test
+  73 ok dash + bash; prebuilt.sh with PKGTOOLS=pkgtools on PATH: out = the Python run;
+  sdk-free artifact/controls identical to Python.
 
 ## Dead ends
 

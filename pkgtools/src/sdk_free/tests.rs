@@ -163,3 +163,18 @@ fn a_path_that_does_not_exist_is_refused() {
     let sdk = SdkFiles::of(&s.sdk()).unwrap();
     assert!(sdk.leaks(&[s.root().join("missing.tar")]).is_err());
 }
+
+#[test]
+fn a_tar_gz_of_nothing_cannot_be_read_as_python_s_tarfile_could_not() {
+    let s = Setup::new();
+    let packed = s.root().join("nothing.tar.gz");
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    gz.write_all(b"").unwrap();
+    fs::write(&packed, gz.finish().unwrap()).unwrap();
+    let sdk = SdkFiles::of(&s.sdk()).unwrap();
+    let error = sdk.leaks(&[packed]).unwrap_err().to_string();
+    assert!(
+        error.contains("nothing.tar.gz as a tar: empty file"),
+        "{error}"
+    );
+}

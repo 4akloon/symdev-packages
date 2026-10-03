@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use symdev_elf2e32::Target2Rewrite;
 
@@ -25,7 +25,7 @@ impl Target2Tool {
                 }
             };
             if rewritten.rewritten() > 0
-                && let Err(e) = fs::write(path, rewritten.bytes())
+                && let Err(e) = Self::replace(path, rewritten.bytes())
             {
                 let _ = writeln!(err, "error: {}: cannot write it back: {e}", path.display());
                 return 1;
@@ -38,5 +38,14 @@ impl Target2Tool {
             );
         }
         0
+    }
+
+    /// Writes `<path>.partial` and renames it over `path`, so a failed write never leaves
+    /// half an object.
+    fn replace(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+        let mut partial = path.as_os_str().to_owned();
+        partial.push(".partial");
+        fs::write(&partial, bytes)?;
+        fs::rename(&partial, path)
     }
 }

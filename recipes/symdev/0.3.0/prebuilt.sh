@@ -55,9 +55,10 @@ fail() {
   exit 1
 }
 
-pkgtools=${PKGTOOLS:-}
-[ -n "$pkgtools" ] && [ -x "$pkgtools" ] ||
-  fail "PKGTOOLS='$pkgtools' is not this repository's pkgtools binary; build it with cargo build --release --locked -p pkgtools and set PKGTOOLS=<repository>/target/release/pkgtools"
+# This repository's pkgtools: a path, or a command on PATH.
+pkgtools=$(command -v "${PKGTOOLS:-}" 2>/dev/null || true)
+[ -n "${PKGTOOLS:-}" ] && [ -n "$pkgtools" ] ||
+  fail "PKGTOOLS='${PKGTOOLS:-}' is not this repository's pkgtools binary; build it with cargo build --release --locked -p pkgtools and set PKGTOOLS=<repository>/target/release/pkgtools"
 
 target=arm-none-symbianelf
 gcc_version=12.1.0

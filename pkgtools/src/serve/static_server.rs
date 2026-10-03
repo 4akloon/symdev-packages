@@ -38,19 +38,27 @@ impl StaticServer {
     }
 
     /// Serves until the process is killed; a connection that fails is logged and dropped.
+    /// A request is logged before its answer is sent, as http.server did, so a client that
+    /// has the answer finds the request in the log.
     pub fn serve(self, mut log: impl Write) {
         for stream in self.listener.incoming() {
-            let result = stream
-                .map_err(|e| e.to_string())
-                .and_then(|s| self.answer(s));
-            let line = result.unwrap_or_else(|e| format!("connection failed: {e}"));
-            let _ = writeln!(log, "{line}");
-            let _ = log.flush();
+            let failed = match stream {
+                Ok(stream) => self.answer(stream, &mut log).err(),
+                Err(e) => Some(e.to_string()),
+            };
+            if let Some(e) = failed {
+                let _ = writeln!(log, "connection failed: {e}");
+                let _ = log.flush();
+            }
         }
     }
 
-    /// Answers one request; returns its log line.
-    fn answer(&self, mut stream: TcpStream) -> std::result::Result<String, String> {
+    /// Answers one request, logging it first.
+    fn answer(
+        &self,
+        mut stream: TcpStream,
+        log: &mut impl Write,
+    ) -> std::result::Result<(), String> {
         let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
         let head = Self::read_head(&mut stream)?;
         let request = head.lines().next().unwrap_or_default().to_string();
@@ -76,14 +84,15 @@ impl StaticServer {
         if method == "GET" {
             out.extend(body.as_deref().unwrap_or_default());
         }
-        stream.write_all(&out).map_err(|e| e.to_string())?;
         let size = if body.is_some() {
             length.to_string()
         } else {
             "-".into()
         };
         let code = status.split(' ').next().unwrap_or_default();
-        Ok(format!("\"{request}\" {code} {size}"))
+        let _ = writeln!(log, "\"{request}\" {code} {size}");
+        let _ = log.flush();
+        stream.write_all(&out).map_err(|e| e.to_string())
     }
 
     fn read_head(stream: &mut TcpStream) -> std::result::Result<String, String> {

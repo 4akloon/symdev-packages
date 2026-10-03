@@ -55,9 +55,6 @@ impl<'a> LeakScan<'a> {
     fn archive(&mut self, name: &str, data: &[u8]) -> Result<()> {
         let unreadable =
             |e: &dyn std::fmt::Display| ToolError::new(format!("cannot read {name} as a tar: {e}"));
-        if data.is_empty() {
-            return Err(unreadable(&"empty file"));
-        }
         let other = [
             (&b"BZh"[..], "bzip2"),
             (b"\xfd7zXZ\0", "xz"),
@@ -68,12 +65,20 @@ impl<'a> LeakScan<'a> {
                 "{kind} is not read here; the pipeline makes tar and gzip only"
             )));
         }
-        let reader: Box<dyn Read + '_> = if data.starts_with(&[0x1f, 0x8b]) {
-            Box::new(MultiGzDecoder::new(data))
+        let mut unpacked = Vec::new();
+        let tar_bytes = if data.starts_with(&[0x1f, 0x8b]) {
+            MultiGzDecoder::new(data)
+                .read_to_end(&mut unpacked)
+                .map_err(|e| unreadable(&e))?;
+            unpacked.as_slice()
         } else {
-            Box::new(data)
+            data
         };
-        let mut tar = tar::Archive::new(reader);
+        // tarfile refuses a stream with no header at all; a tar of only zero blocks is empty.
+        if tar_bytes.is_empty() {
+            return Err(unreadable(&"empty file"));
+        }
+        let mut tar = tar::Archive::new(tar_bytes);
         for entry in tar.entries().map_err(|e| unreadable(&e))? {
             let mut entry = entry.map_err(|e| unreadable(&e))?;
             let kind = entry.header().entry_type();

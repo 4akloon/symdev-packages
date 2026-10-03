@@ -81,8 +81,6 @@ enum Command {
         #[arg(value_name = "path", required = true)]
         paths: Vec<PathBuf>,
     },
-    /// Rewrite every R_ARM_TARGET2 relocation of GCCE objects into R_ARM_ABS32, in place
-    /// (symdev experiment 109): only the type byte of each relocation entry changes.
     /// The install test's fake bucket: serve <dir> on 127.0.0.1 at a free port, print the
     /// port, log each request to stderr; runs until killed.
     #[command(hide = true)]
@@ -90,6 +88,8 @@ enum Command {
         #[arg(value_name = "dir")]
         root: PathBuf,
     },
+    /// Rewrite every R_ARM_TARGET2 relocation of GCCE objects into R_ARM_ABS32, in place
+    /// (symdev experiment 109): only the type byte of each relocation entry changes.
     #[command(name = "target2-abs32")]
     Target2Abs32 {
         #[arg(value_name = "object.o", required = true)]

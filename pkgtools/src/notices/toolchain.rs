@@ -75,7 +75,9 @@ impl Toolchain {
             has_unwind,
             &format!("LLVM's libunwind.o in {}/libunwind.a", sc.display()),
         )?;
-        let crtbegin = std::fs::read(sc.join("crtbeginS.o")).unwrap_or_default();
+        let crtbegin_path = sc.join("crtbeginS.o");
+        let crtbegin = std::fs::read(&crtbegin_path)
+            .map_err(|e| ToolError::io(format!("cannot read {}", crtbegin_path.display()), &e))?;
         let has_list = crtbegin.windows(17).any(|w| w == b"__EH_FRAME_LIST__");
         let what = format!(
             "compiler-rt's crtbegin (__EH_FRAME_LIST__) in {}/crtbeginS.o",

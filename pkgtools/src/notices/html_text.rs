@@ -190,7 +190,7 @@ impl HtmlText {
         if len == 0 {
             return Ok(None);
         }
-        let name = &after[..len.min(32)];
+        let name = &after[..len];
         let char = match name {
             "amp" => '&',
             "lt" => '<',

@@ -105,3 +105,30 @@ fn an_entity_never_seen_in_the_toolchain_pages_is_an_error() {
     let error = HtmlText::of("<p>&copy; 2026</p>").unwrap_err().to_string();
     assert!(error.contains("&copy;"), "{error}");
 }
+
+#[test]
+fn a_long_unknown_entity_name_with_wide_characters_is_an_error_not_a_panic() {
+    let page = format!("<p>&{}éé;</p>", "a".repeat(31));
+    let error = HtmlText::of(&page).unwrap_err().to_string();
+    assert!(error.contains("never seen here"), "{error}");
+}
+
+#[test]
+fn an_unreadable_crtbegin_is_an_io_error_naming_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = sysroot(tmp.path(), "h1-libunwind.o");
+    let crtbegin = root
+        .join("lib/rustlib")
+        .join(TARGET)
+        .join("lib/self-contained/crtbeginS.o");
+    fs::remove_file(&crtbegin).unwrap();
+    let error = Toolchain::new(&root, TARGET, "rustc")
+        .entries()
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(
+        error.starts_with("cannot read ") && error.contains("crtbeginS.o"),
+        "{error}"
+    );
+}
