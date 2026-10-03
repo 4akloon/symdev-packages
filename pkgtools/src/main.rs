@@ -2,6 +2,7 @@
 //! prebuilt.sh, symdev.yml) and the install test's static file server. Offline: no
 //! bucket, no key. Exit 2 is a usage error, as with the Python tools these replace.
 
+mod ar_archive;
 mod casefold;
 mod closure;
 mod py_path;
