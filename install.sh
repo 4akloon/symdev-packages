@@ -127,7 +127,6 @@ main() {
 
   home=${SYMDEV_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/symdev}
   bindir=$HOME/.local/bin
-  link=$bindir/symdev
   tmp=$(mktemp -d)
   staging=
   trap 'rm -rf "$tmp" ${staging:+"$staging"}' EXIT
@@ -252,27 +251,46 @@ main() {
     say "installed symdev $version in $dir"
   fi
 
-  # --- the link --------------------------------------------------------------------------
-  if [ -L "$link" ]; then
-    current=$(readlink "$link")
-    case $current in
-      "$home"/symdev/*/bin/symdev) ;;
-      *) die "$link links to $current, which install.sh did not install; remove it and run install.sh again" ;;
-    esac
-  elif [ -e "$link" ]; then
-    die "$link exists and is not a link; move it away and run install.sh again"
-  fi
-  if [ "$(readlink "$link" 2>/dev/null || true)" != "$target" ]; then
-    mkdir -p "$bindir"
-    ln -s "$target" "$bindir/.symdev.install-sh-$$"
-    mv -f "$bindir/.symdev.install-sh-$$" "$link"
-    say "linked $link -> $target"
-  fi
+  # --- the links: symdev, and the names cargo starts it under -----------------------------
+  # `symdev-ld` is the linker and `symdev-rustc` the rustc of a symdev Rust project's
+  # .cargo/config.toml; the binary picks its role by the name it was started as (symdev's
+  # cargo-run design, section 4). Every link is checked before any is made, so a file of the
+  # user's own at one of them leaves all three as they were.
+  for name in symdev symdev-ld symdev-rustc; do
+    check_link "$bindir/$name"
+  done
+  for name in symdev symdev-ld symdev-rustc; do
+    make_link "$bindir/$name"
+  done
 
   case :$PATH: in
     *:"$bindir":* | *:"$bindir/":*) ;;
     *) warn "$bindir is not on your PATH; add it, e.g. in ~/.profile: export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
   esac
+}
+
+# check_link <path>: a link install.sh may replace (one to a symdev it installed), nothing
+# there, or the end of the run.
+check_link() {
+  if [ -L "$1" ]; then
+    current=$(readlink "$1")
+    case $current in
+      "$home"/symdev/*/bin/symdev) ;;
+      *) die "$1 links to $current, which install.sh did not install; remove it and run install.sh again" ;;
+    esac
+  elif [ -e "$1" ]; then
+    die "$1 exists and is not a link; move it away and run install.sh again"
+  fi
+}
+
+# make_link <path>: <path> -> $target, replaced in one rename.
+make_link() {
+  if [ "$(readlink "$1" 2>/dev/null || true)" != "$target" ]; then
+    mkdir -p "$bindir"
+    ln -s "$target" "$bindir/.symdev.install-sh-$$"
+    mv -f "$bindir/.symdev.install-sh-$$" "$1"
+    say "linked $1 -> $target"
+  fi
 }
 
 main "$@"
