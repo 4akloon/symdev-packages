@@ -18,14 +18,16 @@ recipes/sdk/s60-3rd-fp2/1.1/recipe.toml  # paths taken from the SDK, pinned arch
 recipes/symdev/<ver>/recipe.toml         # symdev;<ver> + rust-sdk;<ver> from the tag v<ver>
 recipes/symdev/<ver>/build.sh            #   (0.1.0, 0.2.0 published; 0.3.0 waits for its tag)
 recipes/symdev/0.3.0/prebuilt.sh         # rust-sdk's prebuilt/ (from 0.3.0)
+recipes/emulator/<yyyy.mm.dd>/           # emulator;<v>: the fork CI's EKA2L1 AppImage, extracted
+recipes/firmware/rm-469/1/               # firmware;rm-469;1 (private): stage.sh + pinned sha256
 install.sh                               # installs the newest symdev from the public bucket
 publish/                                 # the publisher (Rust, on symdev-sdk)
 pkgtools/                                # the pipeline's build checks (Rust), see pkgtools
 tools/notices/gcc-12.1.0/                # COPYING3, COPYING.RUNTIME shipped in prebuilt/
 tools/notices/musl-1.2.5/                # musl's COPYRIGHT, compiled into pkgtools notices
-tests/                                   # install.sh.test
+tests/                                   # install.sh.test, firmware-stage.test, emulator-build.test
 .github/workflows/                       # build.yml (PRs, no upload), publish.yml (main),
-                                         # symdev.yml, tests.yml
+                                         # symdev.yml, emulator.yml, tests.yml
 ```
 
 ## Recipes
@@ -105,6 +107,36 @@ The recipe's `include` names `symbian-rs/prebuilt`, so `publish` does not pack a
 without it (an entry that matches nothing is refused), and `build.sh` refuses a tag that
 tracks `symbian-rs/prebuilt` itself.
 
+## The emulator and the firmware
+
+symdev's `cargo run` and `cargo test` start EKA2L1 on an emulator profile (symdev's
+`docs/superpowers/specs/2026-10-03-emulator-firmware-packages-design.md`). Two recipes give
+a clean machine both, unless the user points `SYMDEV_EKA2L1` / `SYMDEV_EKA2L1_DATA` at their
+own:
+
+- **`emulator;<yyyy.mm.dd>`** (public): the Linux AppImage that the CI of
+  `4akloon/EKA2L1` builds from its `symdev` integration branch (upstream `master` + our open
+  PRs + one CI commit that lists the bundled Ubuntu packages). `artifact.toml` names the CI
+  run and the SHA-256 of the AppImage and of its package list; `build.sh` refuses other
+  bytes (and the zeros of a run not made yet), extracts it with `--appimage-extract`, checks
+  the layout and the glibc floor (`pkgtools emulator-tree`; the floor is 2.38) and writes
+  `share/doc/eka2l1/` (`pkgtools emulator-notices`: EKA2L1's GPL-3.0, every submodule's
+  licence file, with `notices-extra.txt` for the ones read by hand, and `BUNDLED.tsv`).
+  `source.sh` writes the corresponding source, which `publish public --source-code` uploads
+  beside it: the fork commit with every submodule, the recipe, and each bundled Ubuntu source
+  package at its exact version from Launchpad, checked against its `.dsc`. `emulator.yml`
+  builds and dry-runs it on pull requests and publishes it from `main`. The fork keeps CI
+  artifacts for 90 days at most, so a recipe is built within that time; the package in the
+  bucket stays. `gh run download` reads the fork's artifact with the repository secret
+  `EKA2L1_ARTIFACT_TOKEN` when it is set (a fine-grained token with Actions: read on
+  `4akloon/EKA2L1`), else with the run's own token.
+- **`firmware;rm-469;1`** (private only): the Nokia E52's ROM and drive Z in EKA2L1's data
+  layout, and its `devices.yml` entry as `device.yml`. Nokia's bytes never enter this
+  repository, CI or the public bucket. The owner stages and publishes it from his EKA2L1:
+  `EKA2L1_DATA=~/.local/share/EKA2L1/data bash recipes/firmware/rm-469/1/stage.sh <tree>`,
+  then `publish private 'firmware;rm-469;1' --from <tree> --recipe
+  recipes/firmware/rm-469/1/recipe.toml`; the recipe pins the archive's SHA-256.
+
 ## Publishing
 
 ```
@@ -171,6 +203,10 @@ pkgtools sdk-casefold <epoc32/include> <out-dir>
 pkgtools target2-abs32 <object.o>...
 pkgtools runtime-closure <ld.map> <archive>(<member>)...
 pkgtools sdk-free <sdk-dir> <path>...
+pkgtools device-entry <devices.yml> <firmcode>
+pkgtools emulator-tree <tree> --glibc <x.y>
+pkgtools emulator-notices <eka2l1-src> <tree> --id <id> --commit <sha> [--packages <tsv>] [--extra <list>]
+pkgtools dsc-files <file.dsc>
 ```
 
 | Subcommand | Used by | What |
@@ -180,6 +216,10 @@ pkgtools sdk-free <sdk-dir> <path>...
 | `target2-abs32` | prebuilt.sh | `R_ARM_TARGET2` → `R_ARM_ABS32` in place, with symdev's own `Target2Rewrite`; prints the count per file; exit 1 for anything but an ELF32 little-endian ARM `ET_REL` |
 | `runtime-closure` | prebuilt.sh | the GCC runtime members a GNU ld `-Map` took from the named archives must be exactly the shipped ones; prints each and why; exit 1 naming member, referrer and symbol |
 | `sdk-free` | symdev.yml | no file under the paths (directories, tar, .tar.gz/.tgz, nested) has the bytes of an SDK file or a path through `epoc32/`; exit 1 on a leak, 2 when the check cannot be made (bzip2/xz tars included) |
+| `device-entry` | firmware stage.sh | prints one device's entry of an EKA2L1 `devices.yml`; exit 1 when it is missing or its `firmcode` differs |
+| `emulator-tree` | emulator build.sh | the extracted AppImage has the layout symdev starts (`AppRun` a link to `usr/bin/eka2l1_qt`, no AppRun hooks, `qt.conf` with the bundle's plugins) and needs exactly the recorded `GLIBC_` floor; prints it |
+| `emulator-notices` | emulator build.sh | writes `share/doc/eka2l1/`: `COPYING`, every (nested) submodule's licence files (exit 1 naming a submodule with none unless `--extra` lists one), `BUNDLED.tsv` with each package's copyright file (exit 1 when one is missing), `SOURCE.txt` |
+| `dsc-files` | emulator source.sh | a `.dsc`'s `Checksums-Sha256` as `sha256sum -c` input; exit 1 without the field or for a name with a path |
 | `serve <dir>` (hidden) | install.sh.test | the fake bucket: 127.0.0.1, prints its port, logs each request |
 
 The tests are the Python tools' tests, case for case, plus their own; each tool's output
@@ -230,8 +270,9 @@ nothing is cached. The symdev
 package holds `bin/symdev` and `share/doc/symdev/{LICENSE,THIRD-PARTY-NOTICES.txt}`, the
 notices of every crate, bundled C library and toolchain runtime the static binary links
 (`pkgtools notices`; build.sh fails without them). `tests.yml` runs
-`tests/install.sh.test` under dash and bash and `cargo test` (publish and pkgtools) on
-changes to what they cover; no step needs Python. Settings: repository variable `PUBLIC_READ_URL` (the
+`tests/install.sh.test` under dash and bash, `tests/firmware-stage.test`,
+`tests/emulator-build.test` and `cargo test` (publish and pkgtools) on changes to what they
+cover; `emulator.yml` is described in "The emulator and the firmware"; no step needs Python. Settings: repository variable `PUBLIC_READ_URL` (the
 public bucket's r2.dev URL, read by dry runs); environment `publish` with variable
 `PUBLISH_PUBLIC_URL` and secrets `PUBLISH_ACCESS_KEY_ID`, `PUBLISH_SECRET_ACCESS_KEY` and
 `PUBLISH_SIGNING_KEY`, the last given only to the steps that upload an index; for

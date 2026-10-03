@@ -1,0 +1,150 @@
+# emulator;<version> (symdev's 2026-10-03-emulator-firmware-packages-design §3):
+# recipes/emulator/<version>/ names a run of 4akloon/EKA2L1's CI and the SHA-256 of its
+# Linux AppImage. build.sh downloads that artifact, refuses any other bytes, extracts it and
+# adds the notices; source.sh writes the corresponding source. Every run packs the package
+# with `publish --dry-run` against the public index (an id already published fails here).
+# A push to main (merging the recipe is the release) or a manual run then uploads the
+# package and its source, and the index last.
+#
+# The artifact is another repository's. `gh run download` reads it with the token in
+# EKA2L1_ARTIFACT_TOKEN when that repository secret is set (a fine-grained token with
+# Actions: read on 4akloon/EKA2L1), else with this run's own token. Whether the own token
+# can read a public repository's artifacts is checked by the first PR run (plan, step L2).
+# The fork keeps artifacts for 90 days at most, so a recipe is built from them within that
+# time. The package in the bucket stays.
+#
+# Settings as for symdev.yml: variable PUBLIC_READ_URL (dry run); environment `publish` with
+# PUBLISH_PUBLIC_URL, PUBLISH_ACCESS_KEY_ID, PUBLISH_SECRET_ACCESS_KEY, PUBLISH_SIGNING_KEY.
+name: emulator
+
+on:
+  pull_request:
+    paths:
+      - "recipes/emulator/**"
+      - "pkgtools/**"
+      - ".github/workflows/emulator.yml"
+  push:
+    branches: [main]
+    paths:
+      - "recipes/emulator/**"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The recipe to build and publish: recipes/emulator/<version>"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.recipe.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Choose the recipe
+        id: recipe
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          versions=
+          if [ "$EVENT" = workflow_dispatch ]; then
+            versions=$INPUT_VERSION
+          elif git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            versions=$(git diff --name-only "$BASE" HEAD -- recipes/emulator/ | cut -d/ -f3 | sort -u)
+          fi
+          if [ -z "$versions" ]; then
+            versions=$(ls recipes/emulator | sort -V | tail -n 1)
+          fi
+          if [ "$(printf '%s\n' "$versions" | wc -l)" -ne 1 ]; then
+            echo "::error::this change touches several emulator recipes ($(echo $versions)); release one per change"
+            exit 1
+          fi
+          case $versions in
+            *[!0-9.]* | "") echo "::error::'$versions' is not a yyyy.mm.dd version"; exit 1 ;;
+          esac
+          [ -f "recipes/emulator/$versions/recipe.toml" ] || { echo "::error::no recipes/emulator/$versions/recipe.toml"; exit 1; }
+          echo "version=$versions" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust 1.98.1
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
+
+      - name: Build pkgtools
+        run: cargo build --release --locked -p pkgtools
+
+      - name: Build the package
+        env:
+          GH_TOKEN: ${{ secrets.EKA2L1_ARTIFACT_TOKEN || github.token }}
+          PKGTOOLS: ${{ github.workspace }}/target/release/pkgtools
+          VERSION: ${{ steps.recipe.outputs.version }}
+        run: |
+          mkdir work && cd work
+          bash "$GITHUB_WORKSPACE/recipes/emulator/$VERSION/build.sh" "$RUNNER_TEMP/emulator"
+          bash "$GITHUB_WORKSPACE/recipes/emulator/$VERSION/source.sh" "$RUNNER_TEMP/emulator-source.tar.gz"
+
+      - name: Pack it (dry run)
+        env:
+          PUBLISH_PUBLIC_URL: ${{ vars.PUBLIC_READ_URL }}
+          VERSION: ${{ steps.recipe.outputs.version }}
+        run: |
+          cargo run --release --locked -p publish -- public "emulator;$VERSION" \
+            --from "$RUNNER_TEMP/emulator" --source-code "$RUNNER_TEMP/emulator-source.tar.gz" \
+            --recipe "recipes/emulator/$VERSION/recipe.toml" --dry-run
+
+      # An artifact keeps neither file modes nor symlinks; a tar does.
+      - name: Hand the build to the publish job
+        run: tar -C "$RUNNER_TEMP" -cf emulator-build.tar emulator emulator-source.tar.gz
+
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: emulator-build
+          path: emulator-build.tar
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    environment: publish
+    concurrency:
+      group: publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: emulator-build
+          path: ${{ runner.temp }}
+
+      - name: Unpack the build
+        run: tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/emulator-build.tar"
+
+      - name: Install Rust 1.98.1
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
+
+      - name: Publish emulator;${{ needs.build.outputs.version }}
+        env:
+          PUBLISH_PUBLIC_URL: ${{ vars.PUBLISH_PUBLIC_URL }}
+          PUBLISH_ACCESS_KEY_ID: ${{ secrets.PUBLISH_ACCESS_KEY_ID }}
+          PUBLISH_SECRET_ACCESS_KEY: ${{ secrets.PUBLISH_SECRET_ACCESS_KEY }}
+          PUBLISH_SIGNING_KEY: ${{ secrets.PUBLISH_SIGNING_KEY }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          cargo run --release --locked -p publish -- public "emulator;$VERSION" \
+            --from "$RUNNER_TEMP/emulator" --source-code "$RUNNER_TEMP/emulator-source.tar.gz" \
+            --recipe "recipes/emulator/$VERSION/recipe.toml"
