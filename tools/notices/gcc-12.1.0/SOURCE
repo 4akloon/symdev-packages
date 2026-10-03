@@ -1,0 +1,7 @@
+COPYING3 (the GNU General Public License, version 3) and COPYING.RUNTIME (the GCC Runtime
+Library Exception, version 3.1) are GCC 12.1.0's own files, unchanged, taken from
+https://ftp.gnu.org/gnu/gcc/gcc-12.1.0/gcc-12.1.0.tar.xz
+sha256 62fd634889f31c02b64af2c468f064b47ad1ca78411c45abe6ac4b5f8dd19c7b,
+the tarball recipes/gcce/12.1.0/recipe.toml pins.
+recipes/symdev/<ver>/prebuilt.sh ships them with the GCC runtime members the rust-sdk
+package's prebuilt/ holds (libsupc++.a, libgcc.a), which are licensed under them.
