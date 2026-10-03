@@ -1,0 +1,23 @@
+# firmware;rm-469;1 — the Nokia E52's firmware (RM-469) in EKA2L1's data layout, which
+# symdev makes emulator profiles from (symdev's 2026-10-03-emulator-firmware-packages-design
+# §4): roms/rm-469/SYM.ROM, drives/z/rm-469/ and device.yml, the RM-469 entry of EKA2L1's
+# devices.yml (platver epoc93fp2, firmcode RM-469, model N00, …).
+#
+# The bytes are Nokia's, with no known redistribution grant. They live only on the owner's
+# machine and in the private bucket: never in this repository, in CI or in the public
+# bucket (the publisher refuses a LicenseRef- licence there). The owner stages and
+# publishes them:
+#   EKA2L1_DATA=~/.local/share/EKA2L1/data bash recipes/firmware/rm-469/1/stage.sh <tree>
+#   cargo run --release -p publish -- private 'firmware;rm-469;1' --from <tree> \
+#     --recipe recipes/firmware/rm-469/1/recipe.toml
+#
+# Drive Z is in the state EKA2L1 leaves it after the first start: Z:\sys\bin\avkonfep.dll
+# moved to avkonfep.dll.bak (symdev experiment 115 §1.3).
+id = "firmware;rm-469;1"
+license = "LicenseRef-Nokia-firmware"
+host = "any"
+include = ["device.yml", "roms/rm-469", "drives/z/rm-469"]
+#
+# sha256 pins the archive packed from the owner's EKA2L1 data on 2026-10-03: 133 668 334
+# bytes, 15 597 files (SYM.ROM, device.yml and drive Z's 15 595), 258 MB unpacked.
+sha256 = "032b6e1d0a2fef503488046b72a55d6a9297fc48b6856e807aae5ee84066b25b"

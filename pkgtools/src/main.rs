@@ -5,6 +5,7 @@
 mod ar_archive;
 mod casefold;
 mod closure;
+mod device_entry;
 mod notices;
 mod py_path;
 mod py_text;
@@ -22,6 +23,7 @@ use clap::{Parser, Subcommand};
 
 use crate::casefold::IncludeOverlay;
 use crate::closure::ClosureTool;
+use crate::device_entry::DeviceEntry;
 use crate::notices::NoticesTool;
 use crate::sdk_free::SdkFreeTool;
 use crate::serve::StaticServer;
@@ -88,6 +90,15 @@ enum Command {
         #[arg(value_name = "dir")]
         root: PathBuf,
     },
+    /// Print one device's entry of an EKA2L1 devices.yml (the firmware recipe's
+    /// device.yml). Exit 1 when it is missing or its firmcode differs.
+    DeviceEntry {
+        #[arg(value_name = "devices.yml")]
+        devices: PathBuf,
+        /// The device's key and firmware code, e.g. RM-469.
+        #[arg(value_name = "firmcode")]
+        firmcode: String,
+    },
     /// Rewrite every R_ARM_TARGET2 relocation of GCCE objects into R_ARM_ABS32, in place
     /// (symdev experiment 109): only the type byte of each relocation entry changes.
     #[command(name = "target2-abs32")]
@@ -114,6 +125,22 @@ fn main() -> ExitCode {
             &mut out,
             &mut err,
         ),
+        Command::DeviceEntry { devices, firmcode } => match std::fs::read_to_string(&devices) {
+            Ok(text) => match DeviceEntry::find(&text, &firmcode) {
+                Ok(entry) => {
+                    let _ = out.write_all(entry.text().as_bytes());
+                    0
+                }
+                Err(e) => {
+                    let _ = writeln!(err, "error: {}: {e}", devices.display());
+                    1
+                }
+            },
+            Err(e) => {
+                let _ = writeln!(err, "error: {}: {e}", devices.display());
+                1
+            }
+        },
         Command::RuntimeClosure { map, shipped } => {
             ClosureTool::run(&map, &shipped, &mut out, &mut err)
         }

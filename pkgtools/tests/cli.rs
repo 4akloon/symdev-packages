@@ -63,3 +63,20 @@ fn sdk_free_exits_1_on_a_leak_and_0_without() {
     assert_eq!(missing.status.code(), Some(2));
     assert!(text(&missing.stderr).contains("missing.tar does not exist"));
 }
+
+#[test]
+fn device_entry_prints_the_entry_and_exits_1_without_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let yml = tmp.path().join("devices.yml");
+    fs::write(&yml, "RM-469:\n  firmcode: RM-469\n").unwrap();
+    let ok = pkgtools(&[&"device-entry", &yml, &"RM-469"]);
+    assert_eq!(ok.status.code(), Some(0), "{}", text(&ok.stderr));
+    assert_eq!(text(&ok.stdout), "RM-469:\n  firmcode: RM-469\n");
+    let missing = pkgtools(&[&"device-entry", &yml, &"RM-1"]);
+    assert_eq!(missing.status.code(), Some(1));
+    assert!(
+        text(&missing.stderr).starts_with("error: "),
+        "{}",
+        text(&missing.stderr)
+    );
+}

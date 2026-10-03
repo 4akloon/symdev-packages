@@ -1,6 +1,7 @@
 # The repository's own tests, on every change to what they cover: tests/install.sh.test
 # (install.sh against a fake bucket that `pkgtools serve` serves on 127.0.0.1, with an index
-# written by `publish --dry-run`), and the cargo tests of the publisher (some read the real
+# written by `publish --dry-run`), tests/firmware-stage.test (the firmware recipe's stage.sh
+# against a fake EKA2L1 data folder), and the cargo tests of the publisher (some read the real
 # recipes) and of pkgtools (the notices generator, and the TARGET2 rewrite, runtime closure,
 # case-fold and SDK checks that the recipes' scripts and symdev.yml use). Hermetic: no
 # bucket, no secret, nothing leaves the runner.
@@ -74,3 +75,6 @@ jobs:
 
       - name: install.sh under bash
         run: sh tests/install.sh.test "$(command -v bash)"
+
+      - name: The firmware recipe's stage.sh
+        run: sh tests/firmware-stage.test
