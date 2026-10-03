@@ -30,7 +30,10 @@ rm -rf "$tmp/art/squashfs-root"
 
 # The tiny EKA2L1.
 git init --quiet "$tmp/eka"; echo "GPL-3" > "$tmp/eka/LICENSE"
-git -C "$tmp/eka" add LICENSE; git -C "$tmp/eka" -c user.name=t -c user.email=t@t commit --quiet -m x
+# with every licence file the recipe's notices-extra.txt names, as the real checkout has
+grep -v -e '^#' -e '^$' "$recipe/notices-extra.txt" | while read -r f; do
+  mkdir -p "$tmp/eka/$(dirname "$f")"; echo licence > "$tmp/eka/$f"; done
+git -C "$tmp/eka" add -A; git -C "$tmp/eka" -c user.name=t -c user.email=t@t commit --quiet -m x
 commit=$(git -C "$tmp/eka" rev-parse HEAD)
 
 # A copy of the recipe whose artifact.toml names the fake.
