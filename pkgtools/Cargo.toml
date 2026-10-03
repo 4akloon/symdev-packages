@@ -14,10 +14,8 @@ serde_json = "1"
 sha2 = "0.10"
 tar = "0.4"
 # symdev's R_ARM_TARGET2 rewrite (experiment 109), the one its rust-lld driver applies to the
-# SDK's import libraries: taken by path from symdev's rl-driver worktree until symdev v0.3.0
-# is tagged; the lead switches it to `git = "https://github.com/4akloon/symdev"` with that
-# tag at the release. CI cannot build this line before then.
-symdev-elf2e32 = { path = "../../../symdev/rl-driver/crates/symdev-elf2e32" }
+# SDK's import libraries.
+symdev-elf2e32 = { git = "https://github.com/4akloon/symdev", tag = "v0.3.0" }
 
 [dev-dependencies]
 tempfile = "3"

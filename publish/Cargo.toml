@@ -7,10 +7,8 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-# TEMPORARY (G2, branch index-signing): symdev's index-signing worktree, for `SignedIndex`;
-# the lead switches this back to `git = "https://github.com/4akloon/symdev", tag = "v0.2.0"`
-# at the release. CI cannot build this line.
-symdev-sdk = { git = "https://github.com/4akloon/symdev", tag = "v0.2.0" }
+# symdev's package index types and `SignedIndex`, from the same tag as pkgtools' elf2e32.
+symdev-sdk = { git = "https://github.com/4akloon/symdev", tag = "v0.3.0" }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 toml = "1"
