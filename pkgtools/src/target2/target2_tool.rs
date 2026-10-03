@@ -24,11 +24,11 @@ impl Target2Tool {
                     return 1;
                 }
             };
-            if rewritten.rewritten() > 0 {
-                if let Err(e) = fs::write(path, rewritten.bytes()) {
-                    let _ = writeln!(err, "error: {}: cannot write it back: {e}", path.display());
-                    return 1;
-                }
+            if rewritten.rewritten() > 0
+                && let Err(e) = fs::write(path, rewritten.bytes())
+            {
+                let _ = writeln!(err, "error: {}: cannot write it back: {e}", path.display());
+                return 1;
             }
             let count = rewritten.rewritten();
             let _ = writeln!(

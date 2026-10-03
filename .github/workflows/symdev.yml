@@ -32,6 +32,9 @@ on:
     paths:
       - "recipes/symdev/**"
       - "publish/**"
+      - "pkgtools/**"
+      - "tools/**"
+      - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/symdev.yml"
   push:
@@ -122,6 +125,15 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal --target x86_64-unknown-linux-musl
           rustup default 1.98.1
 
+      # Once for the job: publish packs and checks, pkgtools is every other tool the job runs
+      # (build.sh's notices, prebuilt.sh's case-fold overlay, TARGET2 rewrite and closure
+      # check, the SDK check of the artifact).
+      - name: Build this repository's tools
+        run: |
+          cargo build --release --locked -p publish -p pkgtools
+          echo "PUBLISH=$GITHUB_WORKSPACE/target/release/publish" >> "$GITHUB_ENV"
+          echo "PKGTOOLS=$GITHUB_WORKSPACE/target/release/pkgtools" >> "$GITHUB_ENV"
+
       - name: Build symdev and stage the Rust SDK
         env:
           VERSION: ${{ steps.recipe.outputs.version }}
@@ -189,8 +201,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/artifact/packed"
           cd "$RUNNER_TEMP/artifact/packed"
           for kind in rust-sdk symdev; do
-            cargo run --release --locked --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" \
-              -p publish -- public "$kind;$VERSION" \
+            "$PUBLISH" public "$kind;$VERSION" \
               --from "$RUNNER_TEMP/out/$kind" \
               --source-code "$RUNNER_TEMP/out/symdev-$VERSION-source.tar.gz" \
               --recipe "$GITHUB_WORKSPACE/recipes/symdev/$VERSION/recipe.toml" --dry-run
@@ -199,7 +210,7 @@ jobs:
       # The command publish-symdev ends with, checked here so a mistake shows up in the PR.
       - name: Check the install.sh upload (dry run)
         run: |
-          cargo run --release --locked -p publish -- file install.sh --to install.sh \
+          "$PUBLISH" file install.sh --to install.sh \
             --bucket public --content-type "text/plain; charset=utf-8" \
             --cache-control no-cache --dry-run
 
@@ -215,7 +226,7 @@ jobs:
       - name: Check that the artifact holds no file of the S60 SDK
         if: steps.recipe.outputs.prebuilt == 'true'
         run: |
-          python3 tools/sdk_free.py "$RUNNER_TEMP/toolchain/home/${SDK_ID//;//}" \
+          "$PKGTOOLS" sdk-free "$RUNNER_TEMP/toolchain/home/${SDK_ID//;//}" \
             "$RUNNER_TEMP/artifact"
 
       # symdev-out.tar and packed/<sha256>.tar.gz, nothing else.

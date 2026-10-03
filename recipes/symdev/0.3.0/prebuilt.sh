@@ -17,7 +17,8 @@
 #     lib/libgcc.a        pr-support.o _thumb1_case_uqi.o } GCC-exception-3.1
 #     NOTICE, COPYING3, COPYING.RUNTIME
 #
-# Work files go to ./prebuilt-work. Needs python3 and nothing from the build host's own
+# Work files go to ./prebuilt-work. Needs PKGTOOLS, the path of this repository's pkgtools
+# binary (cargo build --release --locked -p pkgtools), and nothing from the build host's own
 # compilers: every tool is GCCE's. Steps:
 #
 # 1. Each shim source is compiled with the C++ argv symdev's GNU build gives it (GcceBuild's
@@ -26,12 +27,13 @@
 #    its -DSYMRS_UID3: without it symrs_avkon.cpp reads the UID3 from the symbol
 #    `symrs_uid3`, which the application's link defines (--defsym=symrs_uid3=0x<uid3>).
 #    The objects are byte-identical to the ones symdev compiles per application.
-# 2. R_ARM_TARGET2 -> R_ARM_ABS32 in every object (tools/target2_abs32.py says why).
+# 2. R_ARM_TARGET2 -> R_ARM_ABS32 in every object (`pkgtools target2-abs32`, symdev's own
+#    Target2Rewrite; experiment 109 says why).
 # 3. The runtime members are taken out of GCCE's own libsupc++.a and libgcc.a and stripped
 #    of debug information.
 # 4. Closure: every shim, --whole-archive, linked by GCCE's ld against the SDK import
 #    libraries and GCCE's full libsupc++.a/libgcc.a must take exactly the members of step 3
-#    (tools/runtime_closure.py), and the same link against only lib/ must leave exactly the
+#    (`pkgtools runtime-closure`), and the same link against only lib/ must leave exactly the
 #    same symbols undefined. A shim that starts to need another runtime member fails here.
 set -euo pipefail
 
@@ -52,6 +54,10 @@ fail() {
   echo "error: $*" >&2
   exit 1
 }
+
+pkgtools=${PKGTOOLS:-}
+[ -n "$pkgtools" ] && [ -x "$pkgtools" ] ||
+  fail "PKGTOOLS='$pkgtools' is not this repository's pkgtools binary; build it with cargo build --release --locked -p pkgtools and set PKGTOOLS=<repository>/target/release/pkgtools"
 
 target=arm-none-symbianelf
 gcc_version=12.1.0
@@ -92,7 +98,7 @@ declared=$(tr -d ' \n' <"$driver" 2>/dev/null |
 [ "$declared," = "$expected" ] || [ "$declared" = "$expected" ] ||
   fail "the tag's RustBuild::SHIM_OPTIONS (${declared:-not found in $driver}) is not this script's (${expected%,}); compile the shims as the tag's symdev does, then update shim_options"
 
-python3 "$tools/sdk_casefold.py" "$include" "$work/casefold" >/dev/null ||
+"$pkgtools" sdk-casefold "$include" "$work/casefold" >/dev/null ||
   fail "cannot build the case-fold overlay of $include"
 cxx_args=(
   -O2 -fexceptions -march=armv5t -mapcs
@@ -125,7 +131,7 @@ for kind in common s60; do
 done
 "$nm" "$work/obj/s60/symrs_avkon.o" | grep -qx ' *U symrs_uid3' ||
   fail "symrs_avkon.o does not take its UID3 from symrs_uid3: the tag's shim needs SYMRS_UID3 at compile time"
-python3 "$tools/target2_abs32.py" "$work"/obj/common/*.o "$work"/obj/s60/*.o
+"$pkgtools" target2-abs32 "$work"/obj/common/*.o "$work"/obj/s60/*.o
 
 # `ar crD`: no timestamps, owners or modes from this machine, so the same objects always
 # make the same archive. Members in name order, as the shell globs them.
@@ -141,7 +147,7 @@ runtime() { # <name> <GCCE archive> <members...>
   for member in "$@"; do
     "$objcopy" --strip-debug "$dir/$member"
   done
-  python3 "$tools/target2_abs32.py" "${@/#/$dir/}"
+  "$pkgtools" target2-abs32 "${@/#/$dir/}"
   (cd "$dir" && "$ar" crD "$out/lib/$name" "$@")
 }
 runtime libsupc++.a "$gcc_target_lib/libsupc++.a" "${supcxx_members[@]}"
@@ -168,7 +174,7 @@ closure_link gcce -L "$gcc_lib" -L "$gcc_target_lib"
 shipped=()
 for member in "${supcxx_members[@]}"; do shipped+=("libsupc++.a($member)"); done
 for member in "${gcc_members[@]}"; do shipped+=("libgcc.a($member)"); done
-python3 "$tools/runtime_closure.py" "$work/closure/gcce.map" "${shipped[@]}" ||
+"$pkgtools" runtime-closure "$work/closure/gcce.map" "${shipped[@]}" ||
   fail "the shims need other GCC runtime members than prebuilt.sh ships"
 closure_link prebuilt -L "$out/lib"
 diff -u "$work/closure/gcce.undefined" "$work/closure/prebuilt.undefined" ||

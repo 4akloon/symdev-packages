@@ -115,12 +115,12 @@ impl Toolchain {
         let mut found = Vec::new();
         let mut at = 0;
         while at < data.len() {
-            if data[at] == 0 {
-                if let Some(len) = Self::version_at(&data[at + 1..]) {
-                    found.push(String::from_utf8_lossy(&data[at + 1..at + 1 + len]).into_owned());
-                    at += len + 2;
-                    continue;
-                }
+            if data[at] == 0
+                && let Some(len) = Self::version_at(&data[at + 1..])
+            {
+                found.push(String::from_utf8_lossy(&data[at + 1..at + 1 + len]).into_owned());
+                at += len + 2;
+                continue;
             }
             at += 1;
         }

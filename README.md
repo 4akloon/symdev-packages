@@ -20,13 +20,10 @@ recipes/symdev/<ver>/build.sh            #   (0.1.0, 0.2.0 published; 0.3.0 wait
 recipes/symdev/0.3.0/prebuilt.sh         # rust-sdk's prebuilt/ (from 0.3.0)
 install.sh                               # installs the newest symdev from the public bucket
 publish/                                 # the publisher (Rust, on symdev-sdk)
-tools/third_party_notices.py             # THIRD-PARTY-NOTICES.txt of the static symdev
-tools/target2_abs32.py                   # prebuilt.sh: R_ARM_TARGET2 -> R_ARM_ABS32
-tools/runtime_closure.py                 # prebuilt.sh: the GCC runtime members a link takes
-tools/sdk_casefold.py                    # prebuilt.sh: case-insensitive SDK include overlay
-tools/sdk_free.py                        # symdev.yml: no SDK file in the artifact
+pkgtools/                                # the pipeline's build checks (Rust), see pkgtools
 tools/notices/gcc-12.1.0/                # COPYING3, COPYING.RUNTIME shipped in prebuilt/
-tests/                                   # install.sh.test, the Python tools' tests
+tools/notices/musl-1.2.5/                # musl's COPYRIGHT, compiled into pkgtools notices
+tests/                                   # install.sh.test
 .github/workflows/                       # build.yml (PRs, no upload), publish.yml (main),
                                          # symdev.yml, tests.yml
 ```
@@ -80,14 +77,14 @@ shim per application with the define.
 
 1. it compiles each shim with the argv of symdev's own GNU build (GcceBuild's recorded line,
    `RustBuild::SHIM_OPTIONS`, which it checks against the tag, and the SDK's case-fold
-   overlay, `tools/sdk_casefold.py`), less `-DSYMRS_UID3`; the objects are byte-identical to
+   overlay, `pkgtools sdk-casefold`), less `-DSYMRS_UID3`; the objects are byte-identical to
    the ones symdev compiles per application;
-2. rewrites their `R_ARM_TARGET2` relocations to `R_ARM_ABS32` (`tools/target2_abs32.py`);
+2. rewrites their `R_ARM_TARGET2` relocations to `R_ARM_ABS32` (`pkgtools target2-abs32`);
 3. takes the four members out of GCCE's `libsupc++.a` and `libgcc.a` and strips their debug
    information;
 4. links every shim with GCCE's `ld` against the SDK's import libraries and GCCE's full
    runtime libraries, and fails unless that link took exactly the four members
-   (`tools/runtime_closure.py`) and the same link against `lib/` alone leaves the same
+   (`pkgtools runtime-closure`) and the same link against `lib/` alone leaves the same
    symbols undefined. A shim that starts to need another runtime member fails here.
 
 The archives are written with `ar crD`, so the same inputs give the same bytes. A compile
@@ -97,6 +94,8 @@ tag's tree as `./symdev`), with this repository at `$PACKAGES`:
 
 ```bash
 symdev sdk install 'gcce;12.1.0' 'sdk;s60-3rd-fp2;1.1'   # the SDK needs the private source
+cargo build --release --locked --manifest-path "$PACKAGES/Cargo.toml" -p pkgtools
+export PKGTOOLS=$PACKAGES/target/release/pkgtools          # build.sh needs it too
 home=${SYMDEV_HOME:-~/.local/share/symdev}
 bash "$PACKAGES/recipes/symdev/0.3.0/prebuilt.sh" symdev "$home/gcce/12.1.0" \
   "$home/sdk/s60-3rd-fp2/1.1" <build.sh's out-dir>/rust-sdk/symbian-rs/prebuilt
@@ -159,6 +158,36 @@ cargo run --release -p publish -- private 'sdk;s60-3rd-fp2;1.1' \
   --from ~/sdk/S60_3rd_FP2 --recipe recipes/sdk/s60-3rd-fp2/1.1/recipe.toml
 ```
 
+## pkgtools
+
+Every tool the pipeline runs besides the publisher, in Rust (`cargo build --release --locked
+-p pkgtools`); the recipes' scripts take it from `PKGTOOLS`. Offline: no bucket, no key.
+Exit 2 is a usage error.
+
+```
+pkgtools notices --manifest-path <checkout>/Cargo.toml --package symdev-cli \
+                 --target x86_64-unknown-linux-musl --output <file>
+pkgtools sdk-casefold <epoc32/include> <out-dir>
+pkgtools target2-abs32 <object.o>...
+pkgtools runtime-closure <ld.map> <archive>(<member>)...
+pkgtools sdk-free <sdk-dir> <path>...
+```
+
+| Subcommand | Used by | What |
+|---|---|---|
+| `notices` | build.sh | THIRD-PARTY-NOTICES.txt of the static symdev: every crate `cargo metadata --filter-platform <target>` resolves from the package through normal dependencies (not the workspace's own), the full text of its licence files, the code it bundles (a table; a crate with `links` or a nested licence file the table does not name is an error), and the toolchain's runtime (std from `COPYRIGHT-library.html`, musl's COPYRIGHT from `tools/notices/`, LLVM's entry of `COPYRIGHT.html`), checked against the runtime archives; needs cargo and rustc. Exit 1 on any error, and no file. |
+| `sdk-casefold` | prebuilt.sh | symdev's case-insensitive overlay of the SDK headers: a symlink for every `#include` name the tree has only in another case (the first in sorted order on a tie); prints the overlay; reuses one marked as built |
+| `target2-abs32` | prebuilt.sh | `R_ARM_TARGET2` → `R_ARM_ABS32` in place, with symdev's own `Target2Rewrite`; prints the count per file; exit 1 for anything but an ELF32 little-endian ARM `ET_REL` |
+| `runtime-closure` | prebuilt.sh | the GCC runtime members a GNU ld `-Map` took from the named archives must be exactly the shipped ones; prints each and why; exit 1 naming member, referrer and symbol |
+| `sdk-free` | symdev.yml | no file under the paths (directories, tar, .tar.gz/.tgz, nested) has the bytes of an SDK file or a path through `epoc32/`; exit 1 on a leak, 2 when the check cannot be made (bzip2/xz tars included) |
+| `serve <dir>` (hidden) | install.sh.test | the fake bucket: 127.0.0.1, prints its port, logs each request |
+
+The tests are the Python tools' tests, case for case, plus their own; each tool's output
+was compared with the Python tool's on the real inputs before the Python was removed
+(NOTES-wip.md, "Rust tools"). pkgtools takes `symdev-elf2e32` from symdev by path until
+symdev v0.3.0 is tagged (see `pkgtools/Cargo.toml`); until then only a machine with that
+checkout builds this workspace.
+
 ## install.sh
 
 `install.sh` (POSIX `sh`) installs the newest prebuilt symdev from the public bucket, where
@@ -178,30 +207,31 @@ public key, written into the script, and refuses an index that is unsigned or do
 verify; without OpenSSL 3 it warns that the index could not be verified and goes on (HTTPS
 and SHA-256 still apply). `SYMDEV_INSTALL_PUBKEY` replaces the key (base64 Ed25519 public
 keys, space-separated), for tests and for mirrors signed with their own key. `sh
-tests/install.sh.test [<shell>]` runs it against a local fake bucket (python3's
-`http.server`, index and archives made by `publish --dry-run`, signed with a throwaway
-key; openssl 3 re-signs what a test edits).
+tests/install.sh.test [<shell>]` runs it against a local fake bucket (`pkgtools serve`,
+index and archives made by `publish --dry-run`, signed with a throwaway key; openssl 3
+re-signs what a test edits); it builds `publish` and `pkgtools` itself.
 
 ## CI
 
 `build.yml` (pull requests) builds GCCE in an AlmaLinux 8 container and packs it with
 `publish public … --dry-run`; `publish.yml` (push to `main` under `recipes/gcce/`, or by
 hand) does the same and uploads. `symdev.yml` does both for `recipes/symdev/<ver>/`: it
-builds a static symdev (musl) from the recipe's tag, dry-runs both packages on every run,
+builds `publish` and `pkgtools` once (`$PUBLISH`, `$PKGTOOLS` for the later steps), builds
+a static symdev (musl) from the recipe's tag, dry-runs both packages on every run,
 and on `main` (or by hand, with the version) uploads `rust-sdk;<ver>`, then `symdev;<ver>`,
 then `install.sh`; a manual run with `install_sh_only` uploads only `install.sh`. For a
 recipe with `prebuilt.sh` (0.3.0 on) the build job also writes a `sources.toml` with the
 private source (`key = "builtin"`), installs `gcce;12.1.0` and `sdk;s60-3rd-fp2;1.1` under
 `$RUNNER_TEMP` with the symdev it just built (the only step given the reader key), runs
-`prebuilt.sh`, and before the upload checks with `tools/sdk_free.py` that no file of the
+`prebuilt.sh`, and before the upload checks with `pkgtools sdk-free` that no file of the
 artifact, nor of an archive in it, has the bytes of an SDK file or a path through `epoc32/`.
 The artifact is `$RUNNER_TEMP/artifact` alone: the build's tar and the packed archives;
 nothing is cached. The symdev
 package holds `bin/symdev` and `share/doc/symdev/{LICENSE,THIRD-PARTY-NOTICES.txt}`, the
 notices of every crate, bundled C library and toolchain runtime the static binary links
-(`tools/third_party_notices.py`; build.sh fails without them). `tests.yml` runs
-`tests/install.sh.test` under dash and bash, the Python tools' tests and `cargo test` on
-changes to what they cover. Settings: repository variable `PUBLIC_READ_URL` (the
+(`pkgtools notices`; build.sh fails without them). `tests.yml` runs
+`tests/install.sh.test` under dash and bash and `cargo test` (publish and pkgtools) on
+changes to what they cover; no step needs Python. Settings: repository variable `PUBLIC_READ_URL` (the
 public bucket's r2.dev URL, read by dry runs); environment `publish` with variable
 `PUBLISH_PUBLIC_URL` and secrets `PUBLISH_ACCESS_KEY_ID`, `PUBLISH_SECRET_ACCESS_KEY` and
 `PUBLISH_SIGNING_KEY`, the last given only to the steps that upload an index; for

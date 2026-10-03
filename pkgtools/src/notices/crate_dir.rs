@@ -71,10 +71,10 @@ impl Crate {
                 rels.push(name);
             }
         }
-        if let Some(file) = self.license_file.as_ref().filter(|f| !f.is_empty()) {
-            if !rels.contains(file) {
-                rels.push(file.clone());
-            }
+        if let Some(file) = self.license_file.as_ref().filter(|f| !f.is_empty())
+            && !rels.contains(file)
+        {
+            rels.push(file.clone());
         }
         rels.into_iter()
             .map(|rel| Ok((rel.clone(), self.text(&rel)?)))

@@ -17,7 +17,7 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
 | sdk-free | done: 8 unit + 1 CLI test = the Python's 9; rehearsal artifact identical |
 | target2-abs32 | done on symdev's `Target2Rewrite` (rl-driver c982182, by path): 13 tests = the Python's 13; real objects identical |
 | serve (install test) | done: 4 tests; install.sh.test 73 ok under dash and bash with it |
-| scripts/workflows/README | todo |
+| scripts/workflows/README | done: build.sh ×3, prebuilt.sh, symdev.yml, tests.yml, README; .py tools + tests removed |
 | equivalence runs | todo |
 
 ## Decisions
@@ -106,10 +106,30 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
   `"GET /x HTTP/1.1" 200 <bytes>` to stderr. install.sh.test builds publish + pkgtools,
   reads target_directory with sed (no python), waits for the port file. dash 73 ok, bash 73
   ok, busybox wget case ok; a probe showed gets() counts real requests (symdev/ 1, index 7).
+- Scripts: build.sh (0.1.0, 0.2.0, 0.3.0 — all three called the notices .py) and prebuilt.sh
+  take `PKGTOOLS` (checked first: must be an executable, else "PKGTOOLS='…' is not this
+  repository's pkgtools binary; build it with …"); no python3, no ar for build.sh. 0.1.0
+  and 0.2.0 updated too: Python = Rust notices on v0.1.0 (2 828 096 B) and v0.2.0, so their
+  output does not change. symdev.yml build job: "Build this repository's tools" (one
+  `cargo build --release --locked -p publish -p pkgtools`, `$PUBLISH`/`$PKGTOOLS` into
+  GITHUB_ENV), the pack/install.sh dry runs use `$PUBLISH`, the SDK check `$PKGTOOLS sdk-free`;
+  PR paths + pkgtools/**, tools/**, Cargo.toml. tests.yml: no python3, no Python step,
+  + pkgtools/** path. No `uses:` line touched (they stay as on this branch; main's SHA pins
+  come with the lead's rebase).
+- End-to-end with the Rust tools: prebuilt.sh (rehearsal inputs, release pkgtools) exit 0,
+  lib/*.a = run1 = the Python run, `diff -r` of the whole out dir vs the Python run empty,
+  casefold overlays identical; build.sh (scratch recipe: rehearsal clone, commit pinned to
+  d62ead28) exit 0, its THIRD-PARTY-NOTICES.txt = Python's on the same tag.
+- Gates (final state): cargo test --workspace: pkgtools 66 + 1 + 2, publish 86 + 9; clippy
+  --workspace --all-targets -D warnings: 0; fmt --check ok; install.sh.test 73 ok under dash
+  and bash (busybox case included).
 
 ## Dead ends
 
 ## Next step
+
+Review (superpowers:requesting-code-review), then report. Left to the lead: rebase onto
+main a649cf6 (refused here), switch `symdev-elf2e32` to the v0.3.0 tag, fill `commit`.
 
 # WIP: G2 signed indexes — branch `index-signing`
 
