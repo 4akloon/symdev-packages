@@ -11,6 +11,7 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
 |---|---|
 | baseline (rl-shims d7542d0) | cargo test 83 + 9 ok |
 | design: crate `pkgtools` | decided (below) |
+| lead's additions | commit pin done; rebase onto main a649cf6 refused by permissions (lead) |
 | notices | done: 14 unit tests = the Python's 14 (+ 3 ar, 2 HTML, 1 CRLF, 2 CLI); v0.2.0 tag byte-identical |
 | runtime-closure | done: 12 tests = the Python's 12; real maps identical (see Facts) |
 | sdk-casefold | done: 6 tests = the Python's 6 (+ mutation: last-wins tie fails); real SDK identical |
@@ -18,7 +19,7 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
 | target2-abs32 | done on symdev's `Target2Rewrite` (rl-driver c982182, by path): 13 tests = the Python's 13; real objects identical |
 | serve (install test) | done: 4 tests; install.sh.test 73 ok under dash and bash with it |
 | scripts/workflows/README | done: build.sh ×3, prebuilt.sh, symdev.yml, tests.yml, README; .py tools + tests removed |
-| equivalence runs | todo |
+| equivalence runs | done: every tool vs its Python on real inputs (Facts) |
 
 ## Decisions
 
@@ -141,8 +142,10 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
 
 ## Next step
 
-Review (superpowers:requesting-code-review), then report. Left to the lead: rebase onto
-main a649cf6 (refused here), switch `symdev-elf2e32` to the v0.3.0 tag, fill `commit`.
+Done; reported. Left to the lead: rebase rl-shims onto main a649cf6 (refused here); at
+the release switch `symdev-elf2e32` in pkgtools/Cargo.toml (and publish's symdev-sdk if
+wanted) to the v0.3.0 tag and fill recipe 0.3.0's `commit`; until the switch no cargo
+command of this workspace builds in CI.
 
 # WIP: G2 signed indexes — branch `index-signing`
 
