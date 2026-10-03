@@ -11,7 +11,7 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
 |---|---|
 | baseline (rl-shims d7542d0) | cargo test 83 + 9 ok |
 | design: crate `pkgtools` | decided (below) |
-| notices | todo |
+| notices | done: 14 unit tests = the Python's 14 (+ 3 ar, 2 HTML, 1 CRLF, 2 CLI); v0.2.0 tag byte-identical |
 | runtime-closure | done: 12 tests = the Python's 12; real maps identical (see Facts) |
 | sdk-casefold | done: 6 tests = the Python's 6 (+ mutation: last-wins tie fails); real SDK identical |
 | sdk-free | done: 8 unit + 1 CLI test = the Python's 9; rehearsal artifact identical |
@@ -90,6 +90,17 @@ old vs new on real inputs. Never push or merge. Scratch: `~/src/pkgtools-scratch
   copies of them → all 14 byte-identical to the Python's rewritten objects, per-file counts
   identical (10 relocations: active 1, f32 1, leave 1, avkon 1, list 3, note 1, query 2),
   and that run's lib/*.a = run1's lib/*.a (experiment 109's verified set, 90 376 B).
+- notices equivalence (`~/src/pkgtools-scratch/notices/`): symdev tag v0.2.0 (clone of
+  ~/projects/symdev at 7ca94bba), `--package symdev-cli --target x86_64-unknown-linux-musl`,
+  rustc 1.98.1: Python and `pkgtools notices` both 2 857 928 bytes, **cmp identical**
+  (121 crates, 4 bundled, 3 toolchain entries, no gaps); same on the rehearsal's tag tree
+  (d62ead28), and = the THIRD-PARTY-NOTICES.txt the rehearsal's build.sh shipped. Python
+  0.48 s, Rust (debug) 0.33 s. musl's COPYRIGHT is compiled in (`include_str!` of
+  tools/notices/musl-1.2.5/COPYRIGHT; MUSL_COPYRIGHTS by version). HtmlText reproduces
+  HTMLParser's per-piece whitespace collapse (text around an inline tag keeps two spaces);
+  entities other than amp/lt/gt/quot/apos and printable numeric ones are an error (the pages
+  hold only &#34; &#39; &#60; &#62;). cargo gets the canonical manifest path (the Python
+  passed it as given while running in the checkout, wrong for a relative path).
 
 ## Dead ends
 
