@@ -44,6 +44,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.recipe.outputs.version }}
+      changed: ${{ steps.recipe.outputs.changed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -57,10 +58,13 @@ jobs:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: |
           versions=
+          changed=true
           if [ "$EVENT" = workflow_dispatch ]; then
             versions=$INPUT_VERSION
           elif git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             versions=$(git diff --name-only "$BASE" HEAD -- recipes/emulator/ | cut -d/ -f3 | sort -u)
+            # No recipe file changed (a pkgtools or workflow change): no artifact to download.
+            if [ -z "$versions" ]; then changed=false; fi
           fi
           if [ -z "$versions" ]; then
             versions=$(ls recipes/emulator | sort -V | tail -n 1)
@@ -74,6 +78,7 @@ jobs:
           esac
           [ -f "recipes/emulator/$versions/recipe.toml" ] || { echo "::error::no recipes/emulator/$versions/recipe.toml"; exit 1; }
           echo "version=$versions" >> "$GITHUB_OUTPUT"
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust 1.98.1
         run: |
@@ -83,7 +88,14 @@ jobs:
       - name: Build pkgtools
         run: cargo build --release --locked -p pkgtools
 
+      # A pkgtools-only change has no artifact to build from (the fork's artifacts expire, and
+      # the recipe may still hold the "not run yet" zeros): its build.sh runs against a fixture.
+      - name: Test the recipe's scripts against a fixture
+        if: steps.recipe.outputs.changed != 'true'
+        run: sh tests/emulator-build.test
+
       - name: Build the package
+        if: steps.recipe.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.EKA2L1_ARTIFACT_TOKEN || github.token }}
           PKGTOOLS: ${{ github.workspace }}/target/release/pkgtools
@@ -94,6 +106,7 @@ jobs:
           bash "$GITHUB_WORKSPACE/recipes/emulator/$VERSION/source.sh" "$RUNNER_TEMP/emulator-source.tar.gz"
 
       - name: Pack it (dry run)
+        if: steps.recipe.outputs.changed == 'true'
         env:
           PUBLISH_PUBLIC_URL: ${{ vars.PUBLIC_READ_URL }}
           VERSION: ${{ steps.recipe.outputs.version }}
@@ -104,9 +117,11 @@ jobs:
 
       # An artifact keeps neither file modes nor symlinks; a tar does.
       - name: Hand the build to the publish job
+        if: steps.recipe.outputs.changed == 'true'
         run: tar -C "$RUNNER_TEMP" -cf emulator-build.tar emulator emulator-source.tar.gz
 
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        if: steps.recipe.outputs.changed == 'true'
         with:
           name: emulator-build
           path: emulator-build.tar
@@ -115,7 +130,7 @@ jobs:
 
   publish:
     needs: build
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && needs.build.outputs.changed == 'true'
     runs-on: ubuntu-24.04
     environment: publish
     concurrency:
