@@ -1,0 +1,36 @@
+# Licence files for the submodules that have none at their top, read by hand on 2026-10-03
+# (plan Task 10 step 8); one path per line, relative to the EKA2L1 checkout.
+#
+# RectangleBinPack: public domain ("All the code is released to Public Domain", Readme.txt).
+src/external/RectangleBinPack/Readme.txt
+# microprofile: the Unlicense ("Licensed using unlicense.org", README.md).
+src/external/microprofile/README.md
+# microprofile's stb: public domain or MIT (README.md, "What's the license?").
+src/external/microprofile/stb/README.md
+# sdl2-cmake-scripts: two-clause BSD (readme.md, "Licence"); FindSDL2.cmake also carries
+# Kitware's BSD header.
+src/external/sdl2-cmake-scripts/readme.md
+# upscale-shaders (shipped as usr/bin/resources/upscale/): each shader's header names its
+# licence (GPL, MIT or public domain); fxaa, grayscale, inversecolors, natural, scanline and
+# sharpen name none and say they were made for or taken into PPSSPP.
+src/emu/drivers/resources/upscale/2xBR.frag
+src/emu/drivers/resources/upscale/4xBR.frag
+src/emu/drivers/resources/upscale/4xhq.frag
+src/emu/drivers/resources/upscale/5xBR-lv2.frag
+src/emu/drivers/resources/upscale/5xBR.frag
+src/emu/drivers/resources/upscale/CRT-Hyllian.frag
+src/emu/drivers/resources/upscale/CRT-Lottes-TV.frag
+src/emu/drivers/resources/upscale/CRT-Lottes.frag
+src/emu/drivers/resources/upscale/aacolor.frag
+src/emu/drivers/resources/upscale/dot.frag
+src/emu/drivers/resources/upscale/dot_mobile.frag
+src/emu/drivers/resources/upscale/dotpsp_color_mobile.frag
+src/emu/drivers/resources/upscale/fxaa.frag
+src/emu/drivers/resources/upscale/grayscale.frag
+src/emu/drivers/resources/upscale/inversecolors.frag
+src/emu/drivers/resources/upscale/natural.frag
+src/emu/drivers/resources/upscale/scanline-emu.frag
+src/emu/drivers/resources/upscale/scanline.frag
+src/emu/drivers/resources/upscale/sharpen.frag
+src/emu/drivers/resources/upscale/zfast_lcd.frag
+src/emu/drivers/resources/upscale/zfast_lcd_mobile.frag

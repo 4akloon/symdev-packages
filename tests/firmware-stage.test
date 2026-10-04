@@ -1,0 +1,32 @@
+#!/bin/sh
+# stage.sh of firmware;rm-469;1 against a fake EKA2L1 data folder: the staged tree, the
+# device.yml it takes, the refusals, and that the data folder is not written.
+#
+#   sh tests/firmware-stage.test
+set -eu
+root=$(cd "$(dirname "$0")/.." && pwd)
+stage=$root/recipes/firmware/rm-469/1/stage.sh
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+cargo build --release --quiet --manifest-path "$root/Cargo.toml" -p pkgtools
+export PKGTOOLS="$root/target/release/pkgtools"
+failures=0
+check() { name=$1; shift; if "$@"; then echo "ok - $name"; else echo "not ok - $name"; failures=$((failures + 1)); fi; }
+
+data=$tmp/data
+mkdir -p "$data/roms/rm-469" "$data/drives/z/rm-469/sys/bin" "$data/drives/z/rm-469/z:/private" "$data/drives/c/x"
+printf 'rom' > "$data/roms/rm-469/SYM.ROM"
+printf 'dll' > "$data/drives/z/rm-469/sys/bin/avkonfep.dll.bak"
+printf 'RM-469:\n  platver: epoc93fp2\n  firmcode: RM-469\n  model: N00\nRM-1:\n  firmcode: RM-1\n' > "$data/devices.yml"
+before=$(cd "$data" && find . -type f -exec sha256sum {} + | sort)
+
+EKA2L1_DATA=$data bash "$stage" "$tmp/out" > "$tmp/out.log" 2>&1
+check "the ROM is staged" cmp -s "$data/roms/rm-469/SYM.ROM" "$tmp/out/roms/rm-469/SYM.ROM"
+check "drive Z is staged with its z: folder" test -d "$tmp/out/drives/z/rm-469/z:/private"
+check "device.yml is the RM-469 entry" sh -c "printf 'RM-469:\n  platver: epoc93fp2\n  firmcode: RM-469\n  model: N00\n' | cmp -s - '$tmp/out/device.yml'"
+check "drive C is not staged" test ! -e "$tmp/out/drives/c"
+check "the data folder is unchanged" sh -c "[ \"\$(cd '$data' && find . -type f -exec sha256sum {} + | sort)\" = '$before' ]"
+check "an existing output folder is refused" sh -c "! EKA2L1_DATA='$data' bash '$stage' '$tmp/out' 2>/dev/null"
+check "no EKA2L1_DATA is refused" sh -c "! env -u EKA2L1_DATA bash '$stage' '$tmp/out2' 2>/dev/null"
+rm -r "$data/roms/rm-469"
+check "a missing ROM is refused by name" sh -c "EKA2L1_DATA='$data' bash '$stage' '$tmp/out3' 2>&1 | grep -q 'roms/rm-469 is missing'"
+[ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

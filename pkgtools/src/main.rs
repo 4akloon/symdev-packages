@@ -5,6 +5,10 @@
 mod ar_archive;
 mod casefold;
 mod closure;
+mod device_entry;
+mod dsc;
+mod emulator_notices;
+mod emulator_tree;
 mod notices;
 mod py_path;
 mod py_text;
@@ -22,6 +26,10 @@ use clap::{Parser, Subcommand};
 
 use crate::casefold::IncludeOverlay;
 use crate::closure::ClosureTool;
+use crate::device_entry::DeviceEntry;
+use crate::dsc::Dsc;
+use crate::emulator_notices::EmulatorNotices;
+use crate::emulator_tree::EmulatorTreeTool;
 use crate::notices::NoticesTool;
 use crate::sdk_free::SdkFreeTool;
 use crate::serve::StaticServer;
@@ -88,6 +96,47 @@ enum Command {
         #[arg(value_name = "dir")]
         root: PathBuf,
     },
+    /// Print one device's entry of an EKA2L1 devices.yml (the firmware recipe's
+    /// device.yml). Exit 1 when it is missing or its firmcode differs.
+    DeviceEntry {
+        #[arg(value_name = "devices.yml")]
+        devices: PathBuf,
+        /// The device's key and firmware code, e.g. RM-469.
+        #[arg(value_name = "firmcode")]
+        firmcode: String,
+    },
+    /// Print the files of a Debian source package with their SHA-256s, from its .dsc, in
+    /// sha256sum -c format.
+    DscFiles {
+        #[arg(value_name = "file.dsc")]
+        dsc: PathBuf,
+    },
+    /// Write share/doc/eka2l1/ into an extracted EKA2L1 AppImage: COPYING, every
+    /// submodule's licence files, BUNDLED.tsv (with --packages) and SOURCE.txt.
+    EmulatorNotices {
+        #[arg(value_name = "eka2l1-src")]
+        src: PathBuf,
+        #[arg(value_name = "tree")]
+        tree: PathBuf,
+        #[arg(long, value_name = "id")]
+        id: String,
+        #[arg(long, value_name = "sha")]
+        commit: String,
+        #[arg(long, value_name = "packages.tsv")]
+        packages: Option<PathBuf>,
+        /// A file listing extra licence files, one path relative to <eka2l1-src> per line.
+        #[arg(long, value_name = "list")]
+        extra: Option<PathBuf>,
+    },
+    /// Check an extracted EKA2L1 AppImage for the layout symdev starts it by and for the
+    /// glibc floor artifact.toml records. Exit 1 on any difference.
+    EmulatorTree {
+        #[arg(value_name = "tree")]
+        tree: PathBuf,
+        /// The recorded floor, e.g. 2.38.
+        #[arg(long, value_name = "x.y")]
+        glibc: String,
+    },
     /// Rewrite every R_ARM_TARGET2 relocation of GCCE objects into R_ARM_ABS32, in place
     /// (symdev experiment 109): only the type byte of each relocation entry changes.
     #[command(name = "target2-abs32")]
@@ -114,6 +163,69 @@ fn main() -> ExitCode {
             &mut out,
             &mut err,
         ),
+        Command::DeviceEntry { devices, firmcode } => match std::fs::read_to_string(&devices) {
+            Ok(text) => match DeviceEntry::find(&text, &firmcode) {
+                Ok(entry) => {
+                    let _ = out.write_all(entry.text().as_bytes());
+                    0
+                }
+                Err(e) => {
+                    let _ = writeln!(err, "error: {}: {e}", devices.display());
+                    1
+                }
+            },
+            Err(e) => {
+                let _ = writeln!(err, "error: {}: {e}", devices.display());
+                1
+            }
+        },
+        Command::DscFiles { dsc } => {
+            let parsed = std::fs::read_to_string(&dsc)
+                .map_err(|e| tool_error::ToolError::io(dsc.display(), &e))
+                .and_then(|text| Dsc::parse(&text));
+            match parsed {
+                Ok(files) => {
+                    let _ = out.write_all(files.sha256sums().as_bytes());
+                    0
+                }
+                Err(e) => {
+                    let _ = writeln!(err, "error: {}: {e}", dsc.display());
+                    1
+                }
+            }
+        }
+        Command::EmulatorNotices {
+            src,
+            tree,
+            id,
+            commit,
+            packages,
+            extra,
+        } => {
+            let extra = extra
+                .as_deref()
+                .map_or(Ok(Vec::new()), EmulatorNotices::read_extra);
+            let written = extra.and_then(|extra| {
+                EmulatorNotices {
+                    src,
+                    tree,
+                    id,
+                    commit,
+                    packages,
+                    extra,
+                }
+                .write()
+            });
+            report(written.map(|(files, packages)| {
+                format!(
+                    "wrote share/doc/eka2l1: COPYING, {files} licence files, {packages} bundled \
+                     packages, SOURCE.txt"
+                )
+            }))
+        }
+        Command::EmulatorTree { tree, glibc } => {
+            EmulatorTreeTool::run(&tree, &glibc, &mut out, &mut err)
+        }
         Command::RuntimeClosure { map, shipped } => {
             ClosureTool::run(&map, &shipped, &mut out, &mut err)
         }

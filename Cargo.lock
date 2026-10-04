@@ -440,6 +440,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "object"
+version = "0.39.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e5a6c098c7a3b6547378093f5cc30bc54fd361ce711e05293a5cc589562739b"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -473,6 +482,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "flate2",
+ "object",
  "serde_json",
  "sha2",
  "symdev-elf2e32",
