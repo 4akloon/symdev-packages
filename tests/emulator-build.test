@@ -60,4 +60,17 @@ if build; then built=yes; else built=no; fi
 check "a changed AppImage is refused" test "$built" = no
 check "with sha256sum's FAILED line" grep -q FAILED "$tmp/log"
 check "and nothing is built" test ! -e "$tmp/out"
+stage; sed -i '/^packages-sha256 = /d' "$tmp/r/artifact.toml"
+if build; then built=yes; else built=no; fi
+check "a missing packages-sha256 is refused" test "$built" = no
+check "by name" grep -q 'packages-sha256' "$tmp/log"
+stage; sed -i 's/^packages-sha256 = .*/packages-sha256 = ""/' "$tmp/r/artifact.toml"
+if build; then built=yes; else built=no; fi
+check "an empty packages-sha256 is refused" test "$built" = no
+stage; build
+rm "$tmp/work/artifact/eka2l1-qt-x64.packages.tsv"
+if (cd "$tmp/work" && bash "$tmp/r/source.sh" "$tmp/src.tar.gz") > "$tmp/log" 2>&1; then built=yes; else built=no; fi
+check "source.sh without the package list fails" test "$built" = no
+check "naming the file" grep -q 'packages.tsv' "$tmp/log"
+check "and writes no archive" test ! -e "$tmp/src.tar.gz"
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }

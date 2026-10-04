@@ -6,7 +6,7 @@
 #
 # Runs in the current directory. The artifact's files come from EMULATOR_ARTIFACT_DIR when
 # it is set, else from `gh run download` (GH_TOKEN must be able to read the fork's Actions).
-# Their SHA-256s must be artifact.toml's: an artifact expires, the package does not, and a
+# Their SHA-256s (the AppImage's and the package list's, both required) must be artifact.toml's: an artifact expires, the package does not, and a
 # different file is never packed. The fork commit is cloned with its submodules into
 # ./eka2l1-src (EKA2L1_GIT overrides where from), for the notices and for source.sh.
 # PKGTOOLS names a pkgtools binary; by default this repository's runs through cargo.
@@ -24,7 +24,11 @@ repository=$(value repository "$a"); commit=$(value commit "$a"); run=$(value ru
 artifact=$(value artifact "$a"); glibc=$(value glibc "$a")
 appimage_sha=$(value appimage-sha256 "$a"); packages_sha=$(value packages-sha256 "$a")
 id=$(value id "$here/recipe.toml")
-for v in "$run" "$appimage_sha" ${packages_sha:+"$packages_sha"}; do
+if [ -z "$packages_sha" ]; then
+  echo "error: $a has no packages-sha256: without the package list the source archive cannot be complete" >&2
+  exit 1
+fi
+for v in "$run" "$appimage_sha" "$packages_sha"; do
   case $v in
     *[!0]*) ;;
     *) echo "error: $a still has zeros: fill in the CI run and its hashes (plan Task 16)" >&2; exit 1 ;;
@@ -39,7 +43,7 @@ else
 fi
 {
   echo "$appimage_sha  eka2l1-qt-x64.AppImage"
-  if [ -n "$packages_sha" ]; then echo "$packages_sha  eka2l1-qt-x64.packages.tsv"; fi
+  echo "$packages_sha  eka2l1-qt-x64.packages.tsv"
 } > artifact/SHA256SUMS
 (cd artifact && sha256sum -c SHA256SUMS)
 
@@ -58,8 +62,7 @@ git -C eka2l1-src checkout --quiet --detach FETCH_HEAD
 git -C eka2l1-src submodule update --init --recursive --depth 1 --quiet
 [ "$(git -C eka2l1-src rev-parse HEAD)" = "$commit" ]
 
-notices=(--id "$id" --commit "$commit")
-if [ -n "$packages_sha" ]; then notices+=(--packages artifact/eka2l1-qt-x64.packages.tsv); fi
+notices=(--id "$id" --commit "$commit" --packages artifact/eka2l1-qt-x64.packages.tsv)
 if [ -f "$here/notices-extra.txt" ]; then notices+=(--extra "$here/notices-extra.txt"); fi
 $pkgtools emulator-notices eka2l1-src squashfs-root "${notices[@]}"
 rm -rf "$prefix" && mkdir -p "$(dirname "$prefix")" && mv squashfs-root "$prefix"
