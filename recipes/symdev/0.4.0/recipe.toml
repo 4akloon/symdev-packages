@@ -12,9 +12,8 @@
 # the tag's workspace version is the version in the ids below.
 git = "https://github.com/4akloon/symdev"
 tag = "v0.4.0"
-# `git rev-parse v0.4.0^{commit}`: not set until the owner tags the release; build.sh refuses
-# the zeros and says so.
-commit = "0000000000000000000000000000000000000000"
+# `git rev-parse v0.4.0^{commit}`: the merge of 4akloon/symdev#17, tagged v0.4.0 on 2026-10-04.
+commit = "4d7899ebfef4ad815cb5a35393f6f99d1cdad964"
 build = "build.sh"
 
 # bin/symdev, static (x86_64-unknown-linux-musl), so it runs on any x86_64 Linux whatever
