@@ -2,9 +2,9 @@
 # "not run yet" (the push that starts the run is the lead's step L1).
 repository = "4akloon/EKA2L1"
 commit = "29d5f58aecc8826a7832c3acdce36461021da39f"
-run = "0"
-artifact = "eka2l1-29d5f58-linux"
-appimage-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
-packages-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+run = "37184126387"
+artifact = "eka2l1-29d5f58ae-linux"
+appimage-sha256 = "b173308b46bba097d8403f418dae0832e004b0be32db6d194b17aaccf2ae09cd"
+packages-sha256 = "16d8e6f045934ad549861ce044b9f9abac0404cb5ad7c71d8c8a7d79d5252e42"
 # The newest GLIBC_ version the tree needs (pkgtools emulator-tree checks it; plan F1).
 glibc = "2.38"
