@@ -20,6 +20,17 @@ pub struct Publication {
     source_code: Option<PathBuf>,
 }
 
+/// `LicenseRef-` terms that are free software notices, not a proprietary licence: the
+/// emulator package's bundled free libraries (LGPL, BSD, Apache-2.0, MPL-2.0 ...).
+const FREE_LICENSE_REFS: &[&str] = &["LicenseRef-EKA2L1-bundle"];
+
+/// The first `LicenseRef-` term anywhere in an SPDX expression that is not allow-listed.
+fn proprietary_term(expression: &str) -> Option<&str> {
+    expression
+        .split(|c: char| !(c.is_ascii_alphanumeric() || "-.+:".contains(c)))
+        .find(|t| t.starts_with("LicenseRef-") && !FREE_LICENSE_REFS.contains(t))
+}
+
 impl Publication {
     /// Checks that a public package has its source code and a proprietary licence
     /// (`LicenseRef-…`) goes only to the private bucket.
@@ -32,11 +43,12 @@ impl Publication {
         let id = recipe.id().clone();
         let refuse = |detail: String| Err(SdkError::Other(detail));
         match (visibility, source_code) {
-            (Visibility::Public, _) if recipe.license().starts_with("LicenseRef-") => {
+            (Visibility::Public, _) if proprietary_term(recipe.license()).is_some() => {
                 refuse(format!(
-                    "{id} is licensed `{}`, which grants no right to publish it; only the \
-                     private bucket may hold it (`publish private`)",
-                    recipe.license()
+                    "{id} is licensed `{}`, whose term `{}` grants no right to publish it; \
+                     only the private bucket may hold it (`publish private`)",
+                    recipe.license(),
+                    proprietary_term(recipe.license()).unwrap_or_default()
                 ))
             }
             (Visibility::Public, None) => refuse(format!(

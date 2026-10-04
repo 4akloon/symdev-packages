@@ -132,6 +132,36 @@ fn a_proprietary_licence_is_never_published_to_the_public_bucket() {
     );
 }
 
+fn public_with_licence(license: &str) -> Result<Publication, String> {
+    let prefix = tree(&[("bin/g++", "g++")]);
+    let text = format!("id = \"gcce;12.1.0\"\nlicense = \"{license}\"\nhost = \"x86_64-linux\"\n");
+    let recipe = Recipe::parse(&text, "r.toml", "gcce;12.1.0").unwrap();
+    let src = prefix.path().join("bin/g++");
+    Publication::new(Visibility::Public, recipe, prefix.path(), Some(&src))
+        .map_err(|e| e.to_string())
+}
+
+#[test]
+fn a_licence_ref_anywhere_in_the_expression_keeps_a_package_private() {
+    let e = public_with_licence("GPL-3.0 AND LicenseRef-Nokia-x")
+        .err()
+        .unwrap();
+    assert!(
+        e.contains("LicenseRef-Nokia-x") && e.contains("private"),
+        "{e}"
+    );
+    let e = public_with_licence("(LicenseRef-Nokia-x OR MIT) AND GPL-3.0")
+        .err()
+        .unwrap();
+    assert!(e.contains("LicenseRef-Nokia-x"), "{e}");
+}
+
+#[test]
+fn the_emulator_bundle_licence_ref_is_allowed_in_public() {
+    let l = "GPL-3.0-or-later AND LGPL-3.0-only AND LicenseRef-EKA2L1-bundle";
+    assert!(public_with_licence(l).is_ok());
+}
+
 #[test]
 fn a_public_recipe_that_pins_a_sha256_is_checked_too() {
     let prefix = tree(&[("bin/g++", "g++")]);
