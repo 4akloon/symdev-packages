@@ -241,7 +241,8 @@ curl -fsSL https://pub-15670d2771364287b9982e497c29f586.r2.dev/install.sh | sh
 It takes the highest `symdev;<ver>` with an `x86_64-linux` archive in `index.toml`, checks
 its SHA-256 and size, extracts it into `$SYMDEV_HOME/symdev/<ver>/` (default
 `~/.local/share/symdev`) with the receipt symdev writes (`symdev sdk list` shows it) and
-links `~/.local/bin/symdev`. Re-running it updates; `SYMDEV_INSTALL_URL` points it at
+links `~/.local/bin/symdev`, and beside it `symdev-ld` and `symdev-rustc`, the names cargo
+starts symdev under as a Rust project's linker and `rustc` wrapper. Re-running it updates; `SYMDEV_INSTALL_URL` points it at
 another bucket. With OpenSSL 3 it first verifies the index's signature with the project's
 public key, written into the script, and refuses an index that is unsigned or does not
 verify; without OpenSSL 3 it warns that the index could not be verified and goes on (HTTPS

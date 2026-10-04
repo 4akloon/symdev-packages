@@ -138,6 +138,10 @@ check "0.10.0 wins over 0.9.1 and 0.2.0; 0.11.0 has no x86_64-linux archive" \
 check "~/.local/bin/symdev is a link to it" \
   test "$(readlink "$h/.local/bin/symdev")" = "$pkg/bin/symdev"
 check "the link runs it" test "$("$h/.local/bin/symdev")" = "symdev stub 0.10.0"
+check "~/.local/bin/symdev-ld, cargo's linker, is a link to it too" \
+  test "$(readlink "$h/.local/bin/symdev-ld")" = "$pkg/bin/symdev"
+check "~/.local/bin/symdev-rustc, a rust-std project's rustc, is a link to it too" \
+  test "$(readlink "$h/.local/bin/symdev-rustc")" = "$pkg/bin/symdev"
 a=$(archive 'symdev;0.10.0')
 printf 'id = "symdev;0.10.0"\nsha256 = "%s"\nsource = "public"\nurl = "%s"\n' \
   "$(basename "$a" .tar.gz)" "${url}symdev/0.10.0/$(basename "$a")" >"$tmp/receipt"
@@ -161,6 +165,8 @@ add 'symdev;0.12.0' x86_64-linux "$(tree 0.12.0)"
 cp "$bucket/index.toml" "$tmp/index.good"
 if install "$h"; then pass "a re-run with a newer version succeeds"; else fail "a re-run with a newer version succeeds"; show; fi
 check "the link moves to 0.12.0" test "$("$h/.local/bin/symdev")" = "symdev stub 0.12.0"
+check "symdev-ld moves to 0.12.0" test "$("$h/.local/bin/symdev-ld")" = "symdev stub 0.12.0"
+check "symdev-rustc moves to 0.12.0" test "$("$h/.local/bin/symdev-rustc")" = "symdev stub 0.12.0"
 check "0.10.0 stays installed" test -f "$pkg/.symdev-package.toml"
 
 # --- read from a pipe, as in `curl -fsSL …/install.sh | sh` ----------------------------
@@ -221,6 +227,15 @@ mkdir -p "$h"
 if install "$h" PATH="$tmp/darwin:/usr/bin:/bin"; then fail "another host fails"; show; else pass "another host fails"; fi
 check "the error names this host and the one supported" contains "$tmp/err" "only for x86_64 Linux, and this is Darwin arm64"
 check "another host installs nothing" test ! -e "$h/.local"
+
+# --- a file of the user's own at ~/.local/bin/symdev-ld is left alone, and so is the rest
+h=$tmp/home13
+mkdir -p "$h/.local/bin"
+printf 'mine\n' >"$h/.local/bin/symdev-ld"
+if install "$h"; then fail "a foreign ~/.local/bin/symdev-ld fails"; show; else pass "a foreign ~/.local/bin/symdev-ld fails"; fi
+check "the error names symdev-ld" contains "$tmp/err" "$h/.local/bin/symdev-ld exists and is not a link"
+check "symdev-ld is unchanged" test "$(cat "$h/.local/bin/symdev-ld")" = mine
+check "nothing else is linked" test ! -e "$h/.local/bin/symdev"
 
 # --- a file of the user's own at ~/.local/bin/symdev is left alone ---------------------
 h=$tmp/home7
