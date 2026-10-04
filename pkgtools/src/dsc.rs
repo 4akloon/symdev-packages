@@ -30,6 +30,11 @@ impl Dsc {
             }
             files.push((sha.to_string(), name.to_string()));
         }
+        if files.is_empty() {
+            return Err(ToolError::new(
+                "the .dsc's Checksums-Sha256 lists no file: a source package without files is not one",
+            ));
+        }
         Ok(Dsc { files })
     }
 
@@ -62,6 +67,12 @@ mod tests {
     fn a_dsc_without_sha256_checksums_is_refused() {
         let e = Dsc::parse("Source: x\nFiles:\n 0123 1 x.tar.gz\n").unwrap_err();
         assert!(e.to_string().contains("Checksums-Sha256"), "{e}");
+    }
+
+    #[test]
+    fn an_empty_sha256_list_is_refused() {
+        let e = Dsc::parse("Source: x\nChecksums-Sha256:\nFiles:\n 0123 1 x.tar.gz\n").unwrap_err();
+        assert!(e.to_string().contains("lists no file"), "{e}");
     }
 
     #[test]
