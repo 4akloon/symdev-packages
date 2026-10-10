@@ -15,7 +15,7 @@ sha2 = "0.10"
 tar = "0.4"
 # symdev's R_ARM_TARGET2 rewrite (experiment 109), the one its rust-lld driver applies to the
 # SDK's import libraries.
-symdev-elf2e32 = { git = "https://github.com/4akloon/symdev", tag = "v0.3.0" }
+symdev-elf2e32 = { git = "https://github.com/4akloon/symdev", tag = "v0.4.0" }
 # Reads the glibc symbol versions an EKA2L1 AppImage's ELF files need (emulator-tree).
 object = { version = "0.39", default-features = false, features = ["read_core", "elf", "std"] }
 
