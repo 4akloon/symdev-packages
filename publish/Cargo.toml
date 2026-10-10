@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 # symdev's package index types and `SignedIndex`, from the same tag as pkgtools' elf2e32.
-symdev-sdk = { git = "https://github.com/4akloon/symdev", tag = "v0.3.0" }
+symdev-sdk = { git = "https://github.com/4akloon/symdev", tag = "v0.4.0" }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 toml = "1"
