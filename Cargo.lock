@@ -727,18 +727,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "symdev-core"
+version = "0.4.0"
+source = "git+https://github.com/4akloon/symdev?tag=v0.4.0#4d7899ebfef4ad815cb5a35393f6f99d1cdad964"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "symdev-elf2e32"
 version = "0.3.0"
 source = "git+https://github.com/4akloon/symdev?tag=v0.3.0#6b2c92046819a0710168b8b649ebbce4f1451731"
 dependencies = [
- "symdev-core",
+ "symdev-core 0.3.0",
  "symdev-uidcrc",
 ]
 
 [[package]]
 name = "symdev-manifest"
-version = "0.3.0"
-source = "git+https://github.com/4akloon/symdev?tag=v0.3.0#6b2c92046819a0710168b8b649ebbce4f1451731"
+version = "0.4.0"
+source = "git+https://github.com/4akloon/symdev?tag=v0.4.0#4d7899ebfef4ad815cb5a35393f6f99d1cdad964"
 dependencies = [
  "serde",
  "thiserror",
@@ -747,8 +755,8 @@ dependencies = [
 
 [[package]]
 name = "symdev-sdk"
-version = "0.3.0"
-source = "git+https://github.com/4akloon/symdev?tag=v0.3.0#6b2c92046819a0710168b8b649ebbce4f1451731"
+version = "0.4.0"
+source = "git+https://github.com/4akloon/symdev?tag=v0.4.0#4d7899ebfef4ad815cb5a35393f6f99d1cdad964"
 dependencies = [
  "base64",
  "ed25519-dalek",
@@ -756,7 +764,7 @@ dependencies = [
  "hmac",
  "serde",
  "sha2",
- "symdev-core",
+ "symdev-core 0.4.0",
  "symdev-manifest",
  "tar",
  "thiserror",
