@@ -17,7 +17,7 @@ tar = "0.4"
 # SDK's import libraries.
 symdev-elf2e32 = { git = "https://github.com/4akloon/symdev", tag = "v0.3.0" }
 # Reads the glibc symbol versions an EKA2L1 AppImage's ELF files need (emulator-tree).
-object = { version = "0.39", default-features = false, features = ["read_core", "elf", "std"] }
+object = { version = "0.40", default-features = false, features = ["read_core", "elf", "std"] }
 
 [dev-dependencies]
 tempfile = "3"
