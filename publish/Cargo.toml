@@ -12,5 +12,5 @@ symdev-sdk = { git = "https://github.com/4akloon/symdev", tag = "v0.3.0" }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 toml = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 tempfile = "3"
